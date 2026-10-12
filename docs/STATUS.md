@@ -1,13 +1,27 @@
 # STATUS.md
 
-Nothing below the input prototype is built. Estimates assume ~10 focused
-hours a week. They are estimates, not promises.
+Bootstrap step 1 is built: a dependency-free Swift package, not a functioning
+window manager. Estimates below assume ~10 focused hours a week. They are
+estimates, not promises.
 
 | Piece | State |
 |---|---|
 | `hjkl` aim/chord prototype | Built (single HTML file, browser only) |
+| Swift package skeleton | Built: empty pure `ChordCore`, startup-only `Chord` executable, empty `ChordCoreTests` target |
 | Unfold animation | Spec + math written; not coded |
 | Everything else | Design only |
+
+## Bootstrap
+
+With Swift 6.0 or newer, `swift build` builds the package and `swift run Chord`
+prints `Chord: bootstrap only; window management is not implemented.` then exits.
+`swift build --build-tests` compiles the intentionally empty test target.
+No behavioral tests exist yet; no UI, window operations, hotkeys, or backend
+are implemented.
+
+Next is bootstrap step 2: port and test pure `frame()`, then generate fixtures
+and implement the Picker with its property tests before any real window wiring.
+The referenced `CHARTER.md` and `ROLES.md` specs are absent from this checkout.
 
 ## Milestones
 
