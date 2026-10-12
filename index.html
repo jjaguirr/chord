@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Chord: interactive demo</title>
+<style>
+:root{--bg:#0f1115;--fg:#e8e9ec;--mut:#9aa0ad;--card:#1a1e27;--line:#2a303c;--acc:#7cc4ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:30px;margin:0 0 4px}
+p{color:var(--mut);margin:6px 0}
+a{color:var(--acc)}
+.note{border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px}
+#chips{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0 8px}
+button{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer}
+button.on{border-color:var(--acc);color:var(--acc)}
+#desk{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:radial-gradient(circle at 30% 20%,#1d2433,#0b0d12);outline:none}
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0}
+.win{position:absolute;background:var(--card);border:2px solid var(--line);border-top:10px solid hsl(var(--h) 65% 58%);border-radius:10px;overflow:hidden;cursor:pointer;box-shadow:0 8px 24px #0008}
+.win.f{outline:5px solid var(--acc)}
+.win b{display:block;padding:12px 16px;font-size:30px}
+.win i{display:block;height:14px;margin:18px 16px;border-radius:7px;background:var(--line)}
+#bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
+#log{min-height:1.5em;color:var(--acc);font-size:14px;margin-left:8px}
+kbd{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-size:12px}
+li{margin:6px 0;color:var(--mut)}
+</style></head><body><main>
+<h1>Chord</h1>
+<p>Windows are paper on a desk, not walls of a room. Keyboard-first window management for macOS.</p>
+<p class='note'>This is an interactive simulation of Chord's keyboard grammar. The real app is pre-alpha and not installable yet; this page runs the same neighbour picker and Unfold math in your browser. Click the desk, then use your keyboard (Option on a Mac, Alt elsewhere), or use the buttons.</p>
+<div id='chips'></div>
+<div id='desk' tabindex='0'><div id='stage'></div></div>
+<div id='bar'><button data-v='-1,0'>&larr;</button><button data-v='0,1'>&darr;</button><button data-v='0,-1'>&uarr;</button><button data-v='1,0'>&rarr;</button><button id='unf'>Unfold</button><button id='rst'>Reset</button><span id='log' aria-live='polite'></span></div>
+<ul>
+<li><kbd>Alt</kbd>+<kbd>H</kbd><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd> look: focus moves to the neighbour the picker chooses. Press two keys together for a diagonal.</li>
+<li><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd> carry the focused window by a few pixels.</li>
+<li><kbd>Alt</kbd>+<kbd>1</kbd>&ndash;<kbd>9</kbd> or <kbd>`</kbd> go to a workspace. Add <kbd>Shift</kbd> to carry the focused window there.</li>
+<li><kbd>Alt</kbd>+<kbd>0</kbd> tap: Unfold. The window shrinks to a card, then grows along a smooth path to the largest 16:9 box. Press again mid-way to restart from where it is.</li>
+</ul>
+<p>Spread (hold <kbd>Alt</kbd>+<kbd>0</kbd>) comes later. Source and charter: <a href='https://github.com/jjaguirr/chord'>github.com/jjaguirr/chord</a></p>
+</main>
+<script>
+const W=1920,H=1080,CW=333,CH=471;
+const roles={1:'Urgent',2:'Work',3:'Automation',4:'Money',5:'Strategy',6:'Ideas',7:'Art',8:'Personal',9:'Self','`':'Bench'};
+const seed=[['Calendar','1',80,90],['Todos','1',330,230],['Mail','1',600,110],['Terminal','1',870,280],['Notes','1',1150,120],['CRM','2',300,200],['Scripts','3',600,200],['Bank','4',400,150],['Browser','5',500,200],['Music','7',700,300]];
+const $=id=>document.getElementById(id),stage=$('stage'),desk=$('desk'),logEl=$('log');
+let wins,ws,sel,z,anim;
+const log=t=>{logEl.textContent=t};
+const ctr=w=>({x:w.x+w.w/2,y:w.y+w.h/2});
+const topWin=()=>wins.filter(w=>w.ws===ws).sort((a,b)=>b.z-a.z)[0]||null;
+const cur=()=>sel&&sel.ws===ws?sel:null;
+function render(){
+ for(const w of wins){const s=w.e.style;s.display=w.ws===ws?'block':'none';s.left=w.x+'px';s.top=w.y+'px';s.width=w.w+'px';s.height=w.h+'px';s.zIndex=w.z;w.e.classList.toggle('f',w===sel)}
+ const c=$('chips');c.innerHTML='';
+ for(const k of Object.keys(roles)){const b=document.createElement('button'),n=wins.filter(w=>w.ws===k).length;b.textContent=k+' '+roles[k]+(n?' ·'+n:'');if(k===ws)b.className='on';b.onclick=()=>go(k);c.appendChild(b)}
+}
+function reset(){
+ stage.innerHTML='';z=0;anim=null;ws='1';
+ wins=seed.map((a,i)=>{const w={id:i,name:a[0],ws:a[1],x:a[2],y:a[3],w:CW,h:CH,z:++z},e=document.createElement('div');e.className='win';e.style.setProperty('--h',(i*47)%360);e.innerHTML='<b>'+a[0]+'</b><i></i><i></i><i></i>';e.onclick=()=>{if(w.ws===ws)setSel(w)};stage.appendChild(e);w.e=e;return w});
+ sel=topWin();render();log('Press Alt + H J K L to look around.');
+}
+function setSel(w){sel=w;w.z=++z;render()}
+function go(k){ws=k;sel=topWin();render();log('Workspace '+k+' · '+roles[k]+(sel?'':' (empty)'))}
+function carry(k){const w=cur();if(!w||k===ws)return;w.ws=k;sel=topWin();render();log(w.name+' carried to '+k+' · '+roles[k])}
+function nudge(v){const w=cur();if(!w)return;w.x=Math.max(0,Math.min(W-w.w,w.x+v[0]*30));w.y=Math.max(0,Math.min(H-w.h,w.y+v[1]*30));render()}
+function look(vx,vy){
+ const o=cur(),m=Math.hypot(vx,vy);if(!o||!m)return;vx/=m;vy/=m;
+ const oc=ctr(o);let best=null,bb=0;
+ for(const w of wins){if(w===o||w.ws!==ws)continue;const c=ctr(w),dx=c.x-oc.x,dy=c.y-oc.y,al=dx*vx+dy*vy;if(al<=8)continue;
+  const s=al+2*Math.abs(dx*vy-dy*vx),b=Math.floor(s/16);
+  if(!best||b<bb||(b===bb&&w.z>best.z)){best=w;bb=b}}
+ const ar=(vy<-.3?'↑':vy>.3?'↓':'')+(vx<-.3?'←':vx>.3?'→':'');
+ if(best){setSel(best);log('Look '+ar+' → '+best.name)}else log('Look '+ar+': nothing that way')
+}
+const sm=t=>t*t*t*(t*(t*6-15)+10);
+const S0={w:CW,h:CH},S1={w:444,h:630},h2=Math.min(H-40,(W-40)*9/16),S2={w:h2*16/9,h:h2};
+function seg(a,b,s){const A0=a.w*a.h,A1=b.w*b.h,R0=a.w/a.h,R1=b.w/b.h,A=A0*Math.pow(A1/A0,s),R=R0*Math.pow(R1/R0,s);return{w:Math.sqrt(A*R),h:Math.sqrt(A/R)}}
+function unfold(){const w=cur();if(!w)return;const run=!!anim;anim={w,t0:performance.now(),f:{x:w.x,y:w.y,w:w.w,h:w.h}};w.z=++z;log('Unfold: '+w.name);if(!run)requestAnimationFrame(tick)}
+function tick(now){
+ if(!anim)return;const e=Math.max(0,now-anim.t0),w=anim.w;let r,done=false;
+ if(e<300){const s=sm(e/300),f=anim.f,cx=(W-CW)/2,cy=(H-CH)/2;r={x:f.x+(cx-f.x)*s,y:f.y+(cy-f.y)*s,w:f.w+(CW-f.w)*s,h:f.h+(CH-f.h)*s}}
+ else{let q;if(e<1200)q=seg(S0,S1,sm((e-300)/900));else if(e<1400)q=S1;else if(e<2900)q=seg(S1,S2,sm((e-1400)/1500));else{q=S2;done=true}
+  r={x:(W-q.w)/2,y:(H-q.h)/2,w:q.w,h:q.h}}
+ Object.assign(w,r);render();
+ if(done){anim=null;log(w.name+' unfolded to 16:9');return}
+ requestAnimationFrame(tick);
+}
+const dirs={KeyH:[-1,0],KeyJ:[0,1],KeyK:[0,-1],KeyL:[1,0]};
+let pend=[],tm=0,t0=0,lastRep=0;
+addEventListener('keydown',e=>{
+ if(!e.altKey)return;const c=e.code,d=dirs[c];
+ if(d){e.preventDefault();
+  if(e.shiftKey){nudge(d);return}
+  if(e.repeat){const n=performance.now();if(n-lastRep<120)return;lastRep=n;look(d[0],d[1]);return}
+  pend.push(d);
+  if(!tm)tm=setTimeout(()=>{const v=pend.reduce((a,b)=>[a[0]+b[0],a[1]+b[1]],[0,0]);pend=[];tm=0;look(v[0],v[1])},35);
+  return}
+ if(c==='Digit0'){e.preventDefault();if(!e.repeat)t0=performance.now();return}
+ if(c==='Backquote'){e.preventDefault();if(e.shiftKey)carry('`');else go('`');return}
+ const m=/^Digit([1-9])$/.exec(c);
+ if(m){e.preventDefault();if(e.shiftKey)carry(m[1]);else go(m[1])}
+});
+addEventListener('keyup',e=>{if(e.code==='Digit0'&&t0){const d=performance.now()-t0;t0=0;if(d<250)unfold();else log('Hold = spread, coming in a later milestone')}});
+document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{const v=b.dataset.v.split(',').map(Number);look(v[0],v[1])});
+$('unf').onclick=unfold;$('rst').onclick=reset;
+const fit=()=>{stage.style.transform='scale('+desk.clientWidth/W+')'};
+addEventListener('resize',fit);fit();reset();
+</script></body></html>
