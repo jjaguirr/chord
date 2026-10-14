@@ -72,11 +72,42 @@ struct PickerTests {
     }
 
     @Test func chordEqualsSequenceOnPlainGrid() {
-        let windows = grid()
+        let windows = [
+            PickerWindow(id: 0, rect: PickerRect(x: 0, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
+            PickerWindow(id: 1, rect: PickerRect(x: 160, y: 0, width: 100, height: 100), layer: 0, mru: 1, coverage: 0),
+            PickerWindow(id: 2, rect: PickerRect(x: 160, y: -160, width: 100, height: 100), layer: 0, mru: 2, coverage: 0),
+        ]
         let chord = Picker.pick(from: 0, direction: PickDirection(x: 1, y: -1), windows: windows)
         let right = Picker.pick(from: 0, direction: .l, windows: windows)
         let sequence = right.flatMap { Picker.pick(from: $0, direction: .k, windows: windows) }
+        #expect(chord == 2)
+        #expect(sequence == 2)
         #expect(chord == sequence)
+    }
+
+    @Test func beamUsesRectangleIntersectionOnBothAxes() {
+        let windows = [
+            PickerWindow(id: 0, rect: PickerRect(x: 0, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
+            PickerWindow(id: 1, rect: PickerRect(x: 120, y: 30, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
+            PickerWindow(id: 2, rect: PickerRect(x: 136, y: -5, width: 100, height: 100), layer: 0, mru: 10, coverage: 0),
+        ]
+        #expect(Picker.pick(from: 0, direction: .l, windows: windows) == 1)
+        let vertical = windows.map { window in
+            PickerWindow(id: window.id,
+                         rect: PickerRect(x: window.rect.y, y: window.rect.x,
+                                          width: window.rect.height, height: window.rect.width),
+                         layer: window.layer, mru: window.mru, coverage: window.coverage)
+        }
+        #expect(Picker.pick(from: 0, direction: .j, windows: vertical) == 1)
+    }
+
+    @Test func zFallbackUsesSnappedRectangles() {
+        let windows = [
+            PickerWindow(id: 0, rect: PickerRect(x: 0, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
+            PickerWindow(id: 1, rect: PickerRect(x: 95.1, y: 10, width: 100, height: 100), layer: 1, mru: 1, coverage: 0),
+            PickerWindow(id: 2, rect: PickerRect(x: 95.4, y: 10, width: 100, height: 100), layer: 1, mru: 2, coverage: 0),
+        ]
+        #expect(Picker.pick(from: 0, direction: .k, windows: windows) == 2)
     }
 
     @Test func zeroVectorCancelDoesNotChangeFocus() {

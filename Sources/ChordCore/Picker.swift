@@ -50,6 +50,12 @@ public struct PickDirection: Equatable, Sendable {
 public enum Picker {
     private static let grid = 8.0
     private static func snapped(_ value: Double) -> Double { (value / grid).rounded() * grid }
+    private static func snapped(_ rect: PickerRect) -> PickerRect {
+        let left = snapped(rect.x), top = snapped(rect.y)
+        let right = snapped(rect.x + rect.width), bottom = snapped(rect.y + rect.height)
+        return PickerRect(x: left, y: top, width: right - left, height: bottom - top)
+    }
+
     private struct Candidate {
         let window: PickerWindow
         let along: Double
@@ -63,15 +69,21 @@ public enum Picker {
     public static func pick(from originID: Int, direction: PickDirection,
                             windows: [PickerWindow]) -> Int? {
         guard direction.x != 0 || direction.y != 0,
-              let origin = windows.first(where: { $0.id == originID }) else { return nil }
-        let ox = snapped(origin.rect.centerX), oy = snapped(origin.rect.centerY)
-        let normalized = windows.filter { w in
+              let originIndex = windows.firstIndex(where: { $0.id == originID }) else { return nil }
+        let snappedWindows = windows.map { window in
+            PickerWindow(id: window.id, rect: snapped(window.rect), layer: window.layer,
+                         mru: window.mru, coverage: window.coverage, minimized: window.minimized,
+                         onWorkspace: window.onWorkspace, stack: window.stack,
+                         activeInStack: window.activeInStack, monitor: window.monitor)
+        }
+        let origin = snappedWindows[originIndex]
+        let normalized = snappedWindows.filter { w in
             !w.minimized && w.onWorkspace && (w.stack == nil || w.activeInStack)
         }
+        let ox = origin.rect.centerX, oy = origin.rect.centerY
         var candidates: [Candidate] = []
         for w in normalized where w.id != originID && w.coverage < 0.8 {
-            let cx = snapped(w.rect.centerX), cy = snapped(w.rect.centerY)
-            let dx = cx - ox, dy = cy - oy
+            let dx = w.rect.centerX - ox, dy = w.rect.centerY - oy
             let dot = dx * Double(direction.x) + dy * Double(direction.y)
             guard dot > 8 else { continue }
             let length = (Double(direction.x * direction.x + direction.y * direction.y)).squareRoot()
@@ -81,8 +93,10 @@ public enum Picker {
             let originExtent = horizontal ? origin.rect.height : origin.rect.width
             let candidateExtent = horizontal ? w.rect.height : w.rect.width
             let extent = min(originExtent, candidateExtent)
-            let overlap = max(0, extent / 2 + (horizontal ? origin.rect.centerY - w.rect.centerY : origin.rect.centerX - w.rect.centerX))
-            let overlapRatio = extent > 0 ? overlap / extent : 0
+            let intersection = horizontal
+                ? max(0, min(origin.rect.y + origin.rect.height, w.rect.y + w.rect.height) - max(origin.rect.y, w.rect.y))
+                : max(0, min(origin.rect.x + origin.rect.width, w.rect.x + w.rect.width) - max(origin.rect.x, w.rect.x))
+            let overlapRatio = extent > 0 ? intersection / extent : 0
             let gap = max(0, along - (horizontal ? origin.rect.width + w.rect.width : origin.rect.height + w.rect.height) / 2)
             let facing = abs(dx) + abs(dy)
             candidates.append(Candidate(window: w, along: along, perpendicular: perpendicular,
