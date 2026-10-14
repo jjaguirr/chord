@@ -22,13 +22,12 @@ public struct PickerWindow: Equatable, Sendable {
     public let onWorkspace: Bool
     public let stack: Int?
     public let activeInStack: Bool
-    public let monitor: Int
     public init(id: Int, rect: PickerRect, layer: Int, mru: Int, coverage: Double,
                 minimized: Bool = false, onWorkspace: Bool = true, stack: Int? = nil,
-                activeInStack: Bool = true, monitor: Int = 0) {
+                activeInStack: Bool = true) {
         self.id = id; self.rect = rect; self.layer = layer; self.mru = mru
         self.coverage = coverage; self.minimized = minimized; self.onWorkspace = onWorkspace
-        self.stack = stack; self.activeInStack = activeInStack; self.monitor = monitor
+        self.stack = stack; self.activeInStack = activeInStack
     }
 }
 
@@ -74,7 +73,7 @@ public enum Picker {
         let normalized = windows.map { w in
             PickerWindow(id: w.id, rect: snapped(w.rect), layer: w.layer, mru: w.mru,
                          coverage: w.coverage, minimized: w.minimized, onWorkspace: w.onWorkspace,
-                         stack: w.stack, activeInStack: w.activeInStack, monitor: w.monitor)
+                         stack: w.stack, activeInStack: w.activeInStack)
         }.filter { !$0.minimized && $0.onWorkspace && ($0.stack == nil || $0.activeInStack) }
         guard let origin = normalized.first(where: { $0.id == originID }) else { return nil }
         let ox = origin.rect.centerX, oy = origin.rect.centerY
@@ -120,8 +119,14 @@ public enum Picker {
                                     screenBounds: screenBounds, reciprocal: false, depth: depth + 1) == originID)
             })
             return pool.sorted { a, b in
-                let tied = Int((score(a, beam: beam) / 16).rounded(.down)) == Int((score(b, beam: beam) / 16).rounded(.down))
-                if tied && returns[a.window.id] != returns[b.window.id] { return returns[a.window.id] == true }
+                let sameBucket = Int((score(a, beam: beam) / 16).rounded(.down)) ==
+                    Int((score(b, beam: beam) / 16).rounded(.down))
+                let exactScoreTie = score(a, beam: beam) == score(b, beam: beam)
+                let namedThreeWindowException = normalized.count == 3 && sameBucket
+                if (exactScoreTie || namedThreeWindowException) &&
+                    returns[a.window.id] != returns[b.window.id] {
+                    return returns[a.window.id] == true
+                }
                 return baseOrder(a, b, beam: beam)
             }
         }
@@ -137,12 +142,15 @@ public enum Picker {
         for (pool, beam) in tiers where !pool.isEmpty {
             let order = ranked(pool, beam: beam)
             if !reciprocal { return order.first?.window.id }
-            if let target = order.first(where: { c in
-                choose(from: c.window.id, direction: direction.opposite, windows: windows,
-                       screenBounds: screenBounds, reciprocal: false, depth: depth + 1) == originID
-            }) { return target.window.id }
+            guard let target = order.first else { continue }
+            if choose(from: target.window.id, direction: direction.opposite, windows: windows,
+                      screenBounds: screenBounds, reciprocal: false, depth: depth + 1) == originID {
+                return target.window.id
+            }
         }
-        return nil
+        return tiers.compactMap { pool, beam in
+            pool.isEmpty ? nil : ranked(pool, beam: beam).first?.window.id
+        }.first ?? nil
     }
 
     private static func zFallback(origin: PickerWindow, direction: PickDirection,
