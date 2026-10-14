@@ -110,6 +110,13 @@ class InvariantChecks(unittest.TestCase):
             "AXUIElementSetAttributeValue(element, kAXPositionAttribute, value)\n",
         )
         self.assertFlagged("b-window-mutation", "AXUIElementSetAttributeValue")
+    def test_ax_raise_action_outside_executor_fails(self):
+        self.write(
+            "Sources/Chord/Ax.swift",
+            "AXUIElementPerformAction(element, kAXRaiseAction as CFString)\n",
+        )
+        self.assertFlagged("b-window-mutation", "AXUIElementPerformAction")
+
 
     def test_ax_position_read_outside_executor_is_allowed(self):
         self.write(
