@@ -29,5 +29,5 @@ see `AGENTS.md` for the check.
 
 - Every action has an inverse and a log line.
 - Agents emit typed plans and never touch windows.
-- Plans that name unknown windows, contain duplicates, or target the
-  vault are rejected or fall back to rules + bench.
+- Plans naming unknown windows or duplicate windows are rejected or fall back
+  to rules + bench. The vault cannot be represented in a Plan.
