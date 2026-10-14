@@ -112,6 +112,16 @@ A change is done when: it builds, the pure core is still pure, tests pass,
 every new action has an inverse and a log line, no invariant above is
 violated, and the relevant doc is updated if behavior changed.
 
+CI (`.github/workflows/ci.yml`) enforces the checkable invariants on every PR:
+`swift test` on macOS, plus `scripts/check_invariants.py`, which fails when
+(a) `ChordCore` imports anything but the Swift standard library, (b) a
+window-mutating call (`setFrame`, `raise`, `move`, AX position/size/raise)
+appears outside `Sources/Chord/Executor/`, (c) the socket client (`socket`,
+`AF_UNIX`, `Network`, `AeroSpaceSocket`) appears outside `Sources/Chord/Backend/`,
+or (d) `Sources/` or `Package.swift` references `spikes/`. Its negative tests
+run as `python3 -m unittest discover -s scripts -p 'test_*.py'`. Changing
+these rules requires updating both the checker and its tests.
+
 ## When stuck
 
 Prefer the smallest reversible change. If a decision is genuinely open
