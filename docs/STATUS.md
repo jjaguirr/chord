@@ -40,5 +40,18 @@ plus Rectangle, we stop and write down why.
 
 ## Unverified
 
-Spikes 1-5 (window IDs, frame survival, hotkeys, birth size, Unfold fps)
-plus socket latency. Each has a defined fail path.
+| C6 spike | Result |
+|---|---|
+| Window IDs across apps | Not run: AeroSpace server disabled; no test app set |
+| AX frame survival | Not run: Accessibility permission/test apps unavailable |
+| Global hotkeys | Not run: Input Monitoring permission and Terminal/iTerm/Vim fixtures unavailable |
+| Window birth size | Not run: no controlled app/window fixture |
+| Unfold frame rate / 20-window Spread | Not run: substrate server disabled; no controlled windows |
+| Socket latency | FAIL: AeroSpace server disabled; 100-request p95 not measured |
+| Mod+0 hold detector | Not run: no standalone detector or controlled resting-finger trial |
+
+`spikes/README.md` records the seven probe protocols, thresholds, and fail
+paths. `docs/C6-SUBSTRATE.md` records the evidence and provisional substrate
+recommendation. The installed AeroSpace is `0.20.3-Beta`; its server explicitly
+rejects commands while disabled. No Accessibility or Input Monitoring
+permission was granted. See the report before interpreting any item as a pass.
