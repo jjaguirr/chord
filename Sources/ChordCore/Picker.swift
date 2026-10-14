@@ -122,6 +122,9 @@ public enum Picker {
             let bscore = beam.isEmpty ? b.along + 2 * b.perpendicular : b.gap
             let ab = Int((ascore / 16).rounded(.down)), bb = Int((bscore / 16).rounded(.down))
             if ab != bb { return ab < bb }
+            if (a.window.layer == origin.layer) != (b.window.layer == origin.layer) {
+                return a.window.layer == origin.layer
+            }
             if a.window.mru != b.window.mru { return a.window.mru > b.window.mru }
             if a.perpendicular != b.perpendicular { return a.perpendicular < b.perpendicular }
             if straight == false && a.facingTie != b.facingTie { return a.facingTie < b.facingTie }
@@ -139,13 +142,25 @@ public enum Picker {
                                   windows: [PickerWindow]) -> Int? {
         if direction == .k {
             return windows.filter { $0.layer == 1 && $0.id != origin.id }
-                .sorted { overlapArea(origin.rect, $0.rect) == overlapArea(origin.rect, $1.rect) ? $0.mru > $1.mru : overlapArea(origin.rect, $0.rect) > overlapArea(origin.rect, $1.rect) }.first?.id
+                .sorted {
+                    let a = overlapArea(origin.rect, $0.rect)
+                    let b = overlapArea(origin.rect, $1.rect)
+                    if a != b { return a > b }
+                    if $0.mru != $1.mru { return $0.mru > $1.mru }
+                    return $0.id < $1.id
+                }.first?.id
         }
         if direction == .j {
             let under = windows.filter { $0.layer == 0 && $0.id != origin.id &&
                 origin.rect.centerX >= $0.rect.x && origin.rect.centerX <= $0.rect.x + $0.rect.width &&
                 origin.rect.centerY >= $0.rect.y && origin.rect.centerY <= $0.rect.y + $0.rect.height }
-            return under.sorted { $0.mru > $1.mru }.first?.id ?? windows.filter { $0.layer == 0 && $0.id != origin.id }.sorted { $0.mru > $1.mru }.first?.id
+            return under.sorted {
+                if $0.mru != $1.mru { return $0.mru > $1.mru }
+                return $0.id < $1.id
+            }.first?.id ?? windows.filter { $0.layer == 0 && $0.id != origin.id }.sorted {
+                if $0.mru != $1.mru { return $0.mru > $1.mru }
+                return $0.id < $1.id
+            }.first?.id
         }
         return nil
     }

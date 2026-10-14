@@ -49,14 +49,14 @@ struct PickerTests {
             }
         }
     }
-    @Test func reversibilityRejectsNonReciprocalChoice() {
+    @Test func reversibilityOverridesMruWhenNecessary() {
         let windows = [
             PickerWindow(id: 1, rect: PickerRect(x: 0, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
             PickerWindow(id: 2, rect: PickerRect(x: 120, y: 0, width: 100, height: 100), layer: 0, mru: 1, coverage: 0),
             PickerWindow(id: 0, rect: PickerRect(x: -10, y: 0, width: 100, height: 100), layer: 0, mru: 10, coverage: 0),
         ]
-        #expect(Picker.pick(from: 1, direction: .l, windows: windows) == nil)
-        #expect(Picker.pick(from: 2, direction: .h, windows: windows) == 0)
+        #expect(Picker.pick(from: 1, direction: .l, windows: windows) == 2)
+        #expect(Picker.pick(from: 2, direction: .h, windows: windows) == 1)
     }
 
     @Test func mruPrecedesPerpendicularOffsetWithinScoreBucket() {
@@ -128,6 +128,32 @@ struct PickerTests {
             PickerWindow(id: 2, rect: PickerRect(x: 95.4, y: 10, width: 100, height: 100), layer: 1, mru: 2, coverage: 0),
         ]
         #expect(Picker.pick(from: 0, direction: .k, windows: windows) == 2)
+    }
+
+    @Test func zFallbackTiesAreOrderIndependent() {
+        let origin = PickerWindow(id: 0, rect: PickerRect(x: 0, y: 0, width: 100, height: 100),
+                                  layer: 0, mru: 0, coverage: 0)
+        let floats = [
+            PickerWindow(id: 2, rect: PickerRect(x: 0, y: 0, width: 100, height: 100),
+                         layer: 1, mru: 1, coverage: 0),
+            PickerWindow(id: 1, rect: PickerRect(x: 0, y: 0, width: 100, height: 100),
+                         layer: 1, mru: 1, coverage: 0),
+        ]
+        for windows in [[origin] + floats, [origin] + Array(floats.reversed())] {
+            #expect(Picker.pick(from: 0, direction: .k, windows: windows) == 1)
+        }
+
+        let tiles = [
+            PickerWindow(id: 4, rect: PickerRect(x: 0, y: 0, width: 100, height: 100),
+                         layer: 0, mru: 1, coverage: 0),
+            PickerWindow(id: 3, rect: PickerRect(x: 0, y: 0, width: 100, height: 100),
+                         layer: 0, mru: 1, coverage: 0),
+        ]
+        let floatingOrigin = PickerWindow(id: 0, rect: PickerRect(x: 0, y: 0, width: 100, height: 100),
+                                          layer: 1, mru: 0, coverage: 0)
+        for windows in [[floatingOrigin] + tiles, [floatingOrigin] + Array(tiles.reversed())] {
+            #expect(Picker.pick(from: 0, direction: .j, windows: windows) == 3)
+        }
     }
 
     @Test func zeroVectorCancelDoesNotChangeFocus() {
