@@ -31,6 +31,11 @@ var optionCount = 0
 var registration: EventHotKeyRef?
 var finished = false
 var carbonMode = false
+var monitoredField: NSTextField?
+func leakageFieldFocused() -> Bool {
+  guard let field = monitoredField else { return false }
+  return NSApp.keyWindow?.firstResponder === field
+}
 func fail(_ reason: String, _ path: String) -> Never {
   fputs("FAIL: \(reason); fail path: \(path)\n", stderr)
   exit(1)
@@ -56,7 +61,7 @@ if carbonMode {
   let installed = InstallEventHandler(
     GetApplicationEventTarget(),
     { _, _, _ in
-      carbonCount += 1
+      if leakageFieldFocused() { carbonCount += 1 }
       return noErr
     }, 1, [spec], nil, nil)
   guard installed == noErr,
@@ -77,7 +82,7 @@ guard
     eventsOfInterest: mask,
     callback: { _, _, event, _ in
       let code = event.getIntegerValueField(.keyboardEventKeycode)
-      if code == option0 && event.flags.contains(.maskAlternate) {
+      if code == option0 && event.flags.contains(.maskAlternate) && leakageFieldFocused() {
         optionCount += 1
         if !carbonMode { return nil }
       }
@@ -106,7 +111,7 @@ let leakageWindow = NSWindow(
 )
 leakageWindow.title = "\(carbonMode ? "Carbon" : "CGEventTap fallback") Option+0 leakage check"
 let leakageField = NSTextField(frame: NSRect(x: 20, y: 30, width: 320, height: 24))
-leakageWindow.contentView?.addSubview(leakageField)
+monitoredField = leakageField
 leakageWindow.center()
 leakageWindow.makeKeyAndOrderFront(nil)
 application.activate(ignoringOtherApps: true)

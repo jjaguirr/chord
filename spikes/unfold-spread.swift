@@ -61,11 +61,13 @@ func frame(_ window: AXUIElement) -> (CGPoint, CGSize)? {
 func set(_ window: AXUIElement, _ point: CGPoint, _ size: CGSize) -> Bool {
   var p = point
   var s = size
-  guard let pv = AXValueCreate(.cgPoint, &p), let sv = AXValueCreate(.cgSize, &s) else {
-    return false
-  }
-  return AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, pv) == .success
-    && AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sv) == .success
+  guard let pv = AXValueCreate(.cgPoint, &p), let sv = AXValueCreate(.cgSize, &s),
+    AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, pv) == .success,
+    AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sv) == .success,
+    let actual = frame(window)
+  else { return false }
+  return abs(actual.0.x - point.x) < 2 && abs(actual.0.y - point.y) < 2
+    && abs(actual.1.width - size.width) < 2 && abs(actual.1.height - size.height) < 2
 }
 guard CommandLine.arguments.count == 2 else {
   fail(
@@ -144,7 +146,8 @@ guard let at30 = run(30, [wins[0]], unfold: true), let at60 = run(60, [wins[0]],
   let spread = run(60, wins, unfold: false)
 else {
   fail(
-    "AX refused a window frame update", "inspect app restrictions and Accessibility authorization")
+    "AX frame did not match requested geometry or setters were refused",
+    "inspect app restrictions, clamping, and Accessibility authorization")
 }
 for (label, sample, budget) in [
   ("30fps Unfold", at30, 33.33), ("60fps Unfold", at60, 16.67), ("20-window Spread", spread, 16.67),
