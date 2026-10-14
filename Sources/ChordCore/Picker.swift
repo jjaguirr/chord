@@ -4,17 +4,14 @@ public struct PickerRect: Equatable, Sendable {
     public let y: Double
     public let width: Double
     public let height: Double
-
     public init(x: Double, y: Double, width: Double, height: Double) {
         self.x = x; self.y = y; self.width = width; self.height = height
     }
-
     fileprivate var centerX: Double { x + width / 2 }
     fileprivate var centerY: Double { y + height / 2 }
 }
 
-/// A window snapshot. `stack` identifies a stack; `activeInStack` selects its
-/// representative. Inactive stack members are omitted during normalization.
+/// A window snapshot. Inactive stack members are omitted during normalization.
 public struct PickerWindow: Equatable, Sendable {
     public let id: Int
     public let rect: PickerRect
@@ -26,7 +23,6 @@ public struct PickerWindow: Equatable, Sendable {
     public let stack: Int?
     public let activeInStack: Bool
     public let monitor: Int
-
     public init(id: Int, rect: PickerRect, layer: Int, mru: Int, coverage: Double,
                 minimized: Bool = false, onWorkspace: Bool = true, stack: Int? = nil,
                 activeInStack: Bool = true, monitor: Int = 0) {
@@ -55,7 +51,6 @@ public enum Picker {
         let right = snapped(rect.x + rect.width), bottom = snapped(rect.y + rect.height)
         return PickerRect(x: left, y: top, width: right - left, height: bottom - top)
     }
-
     private struct Candidate {
         let window: PickerWindow
         let along: Double
@@ -67,25 +62,23 @@ public enum Picker {
 
     /// Returns nil for a reserved cancel chord or when no directional target exists.
     public static func pick(from originID: Int, direction: PickDirection,
-                            windows: [PickerWindow]) -> Int? {
-        choose(from: originID, direction: direction, windows: windows, requireReciprocal: true)
+                            windows: [PickerWindow], screenBounds: PickerRect) -> Int? {
+        choose(from: originID, direction: direction, windows: windows, screenBounds: screenBounds,
+               reciprocal: true, depth: 0)
     }
 
     private static func choose(from originID: Int, direction: PickDirection,
-                               windows: [PickerWindow], requireReciprocal: Bool) -> Int? {
-        guard direction.x != 0 || direction.y != 0,
-              let originIndex = windows.firstIndex(where: { $0.id == originID }) else { return nil }
-        let snappedWindows = windows.map { window in
-            PickerWindow(id: window.id, rect: snapped(window.rect), layer: window.layer,
-                         mru: window.mru, coverage: window.coverage, minimized: window.minimized,
-                         onWorkspace: window.onWorkspace, stack: window.stack,
-                         activeInStack: window.activeInStack, monitor: window.monitor)
-        }
-        let origin = snappedWindows[originIndex]
-        let normalized = snappedWindows.filter { w in
-            !w.minimized && w.onWorkspace && (w.stack == nil || w.activeInStack)
-        }
+                               windows: [PickerWindow], screenBounds: PickerRect,
+                               reciprocal: Bool, depth: Int) -> Int? {
+        guard direction.x != 0 || direction.y != 0 else { return nil }
+        let normalized = windows.map { w in
+            PickerWindow(id: w.id, rect: snapped(w.rect), layer: w.layer, mru: w.mru,
+                         coverage: w.coverage, minimized: w.minimized, onWorkspace: w.onWorkspace,
+                         stack: w.stack, activeInStack: w.activeInStack, monitor: w.monitor)
+        }.filter { !$0.minimized && $0.onWorkspace && ($0.stack == nil || $0.activeInStack) }
+        guard let origin = normalized.first(where: { $0.id == originID }) else { return nil }
         let ox = origin.rect.centerX, oy = origin.rect.centerY
+        let straight = direction.x == 0 || direction.y == 0
         var candidates: [Candidate] = []
         for w in normalized where w.id != originID && w.coverage < 0.8 {
             let dx = w.rect.centerX - ox, dy = w.rect.centerY - oy
@@ -95,69 +88,80 @@ public enum Picker {
             let along = dot / length
             let perpendicular = abs(dx * Double(direction.y) - dy * Double(direction.x)) / length
             let horizontal = direction.y == 0
-            let originExtent = horizontal ? origin.rect.height : origin.rect.width
-            let candidateExtent = horizontal ? w.rect.height : w.rect.width
-            let extent = min(originExtent, candidateExtent)
+            let extent = min(horizontal ? origin.rect.height : origin.rect.width,
+                             horizontal ? w.rect.height : w.rect.width)
             let intersection = horizontal
                 ? max(0, min(origin.rect.y + origin.rect.height, w.rect.y + w.rect.height) - max(origin.rect.y, w.rect.y))
                 : max(0, min(origin.rect.x + origin.rect.width, w.rect.x + w.rect.width) - max(origin.rect.x, w.rect.x))
-            let overlapRatio = extent > 0 ? intersection / extent : 0
+            let overlap = extent > 0 ? intersection / extent : 0
             let gap = max(0, along - (horizontal ? origin.rect.width + w.rect.width : origin.rect.height + w.rect.height) / 2)
-            let facing = abs(dx) + abs(dy)
-            candidates.append(Candidate(window: w, along: along, perpendicular: perpendicular,
-                                        gap: gap, overlap: overlapRatio, facingTie: facing))
+            let fx = direction.x > 0 ? w.rect.x + w.rect.width : w.rect.x
+            let fy = direction.y > 0 ? w.rect.y + w.rect.height : w.rect.y
+            let sx = direction.x > 0 ? screenBounds.x + screenBounds.width : screenBounds.x
+            let sy = direction.y > 0 ? screenBounds.y + screenBounds.height : screenBounds.y
+            candidates.append(Candidate(window: w, along: along, perpendicular: perpendicular, gap: gap,
+                                        overlap: overlap, facingTie: straight ? 0 : ((fx - sx) * (fx - sx) + (fy - sy) * (fy - sy)).squareRoot()))
         }
-        guard !candidates.isEmpty else {
-            let target = zFallback(origin: origin, direction: direction, windows: normalized)
-            guard requireReciprocal, let target else { return target }
-            return choose(from: target, direction: direction.opposite,
-                          windows: windows, requireReciprocal: false) == originID ? target : nil
-        }
-
-        let straight = direction.x == 0 || direction.y == 0
-        let beam = straight ? candidates.filter { $0.overlap >= 0.25 } : []
-        let pool = beam.isEmpty ? candidates : beam
-        func ordered(_ a: Candidate, _ b: Candidate) -> Bool {
-            let ascore = beam.isEmpty ? a.along + 2 * a.perpendicular : a.gap
-            let bscore = beam.isEmpty ? b.along + 2 * b.perpendicular : b.gap
-            let ab = Int((ascore / 16).rounded(.down)), bb = Int((bscore / 16).rounded(.down))
-            if ab != bb { return ab < bb }
-            if (a.window.layer == origin.layer) != (b.window.layer == origin.layer) {
-                return a.window.layer == origin.layer
-            }
+        func score(_ c: Candidate, beam: Bool) -> Double { beam ? c.gap : c.along + 2 * c.perpendicular }
+        func baseOrder(_ a: Candidate, _ b: Candidate, beam: Bool) -> Bool {
+            let ascore = Int((score(a, beam: beam) / 16).rounded(.down))
+            let bscore = Int((score(b, beam: beam) / 16).rounded(.down))
+            if ascore != bscore { return ascore < bscore }
+            if (a.window.layer == origin.layer) != (b.window.layer == origin.layer) { return a.window.layer == origin.layer }
             if a.window.mru != b.window.mru { return a.window.mru > b.window.mru }
             if a.perpendicular != b.perpendicular { return a.perpendicular < b.perpendicular }
-            if straight == false && a.facingTie != b.facingTie { return a.facingTie < b.facingTie }
+            if !straight && a.facingTie != b.facingTie { return a.facingTie < b.facingTie }
             return a.window.id < b.window.id
         }
-        let ranked = pool.sorted(by: ordered)
-        guard requireReciprocal else { return ranked.first?.window.id }
-        return ranked.first { candidate in
-            choose(from: candidate.window.id, direction: direction.opposite,
-                   windows: windows, requireReciprocal: false) == originID
-        }?.window.id
+        func ranked(_ pool: [Candidate], beam: Bool) -> [Candidate] {
+            guard depth < 2 else { return pool.sorted { baseOrder($0, $1, beam: beam) } }
+            let returns = Dictionary(uniqueKeysWithValues: pool.map { c in
+                (c.window.id, choose(from: c.window.id, direction: direction.opposite, windows: windows,
+                                    screenBounds: screenBounds, reciprocal: false, depth: depth + 1) == originID)
+            })
+            return pool.sorted { a, b in
+                let tied = Int((score(a, beam: beam) / 16).rounded(.down)) == Int((score(b, beam: beam) / 16).rounded(.down))
+                if tied && returns[a.window.id] != returns[b.window.id] { return returns[a.window.id] == true }
+                return baseOrder(a, b, beam: beam)
+            }
+        }
+        if candidates.isEmpty {
+            let target = zFallback(origin: origin, direction: direction, windows: normalized)
+            guard reciprocal, let target else { return target }
+            return choose(from: target, direction: direction.opposite, windows: windows,
+                          screenBounds: screenBounds, reciprocal: false, depth: depth + 1) == originID ? target : nil
+        }
+        let beamCandidates = straight ? candidates.filter { $0.overlap >= 0.25 } : []
+        let tiers: [([Candidate], Bool)] = beamCandidates.isEmpty
+            ? [(candidates, false)] : [(beamCandidates, true), (candidates.filter { $0.overlap < 0.25 }, false)]
+        for (pool, beam) in tiers where !pool.isEmpty {
+            let order = ranked(pool, beam: beam)
+            if !reciprocal { return order.first?.window.id }
+            if let target = order.first(where: { c in
+                choose(from: c.window.id, direction: direction.opposite, windows: windows,
+                       screenBounds: screenBounds, reciprocal: false, depth: depth + 1) == originID
+            }) { return target.window.id }
+        }
+        return nil
     }
 
     private static func zFallback(origin: PickerWindow, direction: PickDirection,
                                   windows: [PickerWindow]) -> Int? {
         if direction == .k {
-            return windows.filter { $0.layer == 1 && $0.id != origin.id }
-                .sorted {
-                    let a = overlapArea(origin.rect, $0.rect)
-                    let b = overlapArea(origin.rect, $1.rect)
-                    if a != b { return a > b }
-                    if $0.mru != $1.mru { return $0.mru > $1.mru }
-                    return $0.id < $1.id
-                }.first?.id
-        }
-        if direction == .j {
-            let under = windows.filter { $0.layer == 0 && $0.id != origin.id &&
-                origin.rect.centerX >= $0.rect.x && origin.rect.centerX <= $0.rect.x + $0.rect.width &&
-                origin.rect.centerY >= $0.rect.y && origin.rect.centerY <= $0.rect.y + $0.rect.height }
-            return under.sorted {
+            return windows.filter { $0.layer == 1 && $0.id != origin.id }.sorted {
+                let a = overlapArea(origin.rect, $0.rect), b = overlapArea(origin.rect, $1.rect)
+                if a != b { return a > b }
                 if $0.mru != $1.mru { return $0.mru > $1.mru }
                 return $0.id < $1.id
-            }.first?.id ?? windows.filter { $0.layer == 0 && $0.id != origin.id }.sorted {
+            }.first?.id
+        }
+        if direction == .j {
+            let tiles = windows.filter { $0.layer == 0 && $0.id != origin.id }
+            let under = tiles.filter {
+                origin.rect.centerX >= $0.rect.x && origin.rect.centerX <= $0.rect.x + $0.rect.width &&
+                origin.rect.centerY >= $0.rect.y && origin.rect.centerY <= $0.rect.y + $0.rect.height
+            }
+            return (under.isEmpty ? tiles : under).sorted {
                 if $0.mru != $1.mru { return $0.mru > $1.mru }
                 return $0.id < $1.id
             }.first?.id

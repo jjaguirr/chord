@@ -187,4 +187,32 @@ struct PickerTests {
         ]
         #expect(Picker.pick(from: 0, direction: .l, windows: windows) == 2)
     }
+    @Test func reciprocalCandidateWinsEqualScoreBucketBeforeMru() {
+        let windows = [
+            PickerWindow(id: 1, rect: PickerRect(x: 0, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
+            PickerWindow(id: 2, rect: PickerRect(x: 120, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
+            PickerWindow(id: 0, rect: PickerRect(x: -10, y: 0, width: 100, height: 100), layer: 0, mru: 10, coverage: 0),
+        ]
+        #expect(Picker.pick(from: 1, direction: .l, windows: windows) == 2)
+        #expect(Picker.pick(from: 2, direction: .h, windows: windows) == 1)
+    }
+
+    @Test func diagonalTieUsesScreenCornerDistance() {
+        let windows = [
+            PickerWindow(id: 0, rect: PickerRect(x: 0, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
+            PickerWindow(id: 1, rect: PickerRect(x: 120, y: 120, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
+            PickerWindow(id: 2, rect: PickerRect(x: 128, y: 112, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
+        ]
+        #expect(Picker.pick(from: 0, direction: PickDirection(x: 1, y: 1),
+                            windows: windows,
+                            screenBounds: PickerRect(x: 0, y: 0, width: 300, height: 300)) == 1)
+    }
+}
+private let testScreenBounds = PickerRect(x: -10_000, y: -10_000, width: 20_000, height: 20_000)
+
+private extension Picker {
+    static func pick(from originID: Int, direction: PickDirection,
+                     windows: [PickerWindow]) -> Int? {
+        pick(from: originID, direction: direction, windows: windows, screenBounds: testScreenBounds)
+    }
 }
