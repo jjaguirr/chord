@@ -61,10 +61,32 @@ guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEve
 let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
 CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
 CGEvent.tapEnable(tap: tap, enable: true)
+let application = NSApplication.shared
+application.setActivationPolicy(.regular)
+let leakageWindow = NSWindow(
+    contentRect: NSRect(x: 0, y: 0, width: 360, height: 100),
+    styleMask: [.titled, .closable],
+    backing: .buffered,
+    defer: false
+)
+leakageWindow.title = "\(carbonMode ? "Carbon" : "CGEventTap fallback") Option+0 leakage check"
+let leakageField = NSTextField(frame: NSRect(x: 20, y: 30, width: 320, height: 24))
+leakageWindow.contentView?.addSubview(leakageField)
+leakageWindow.center()
+leakageWindow.makeKeyAndOrderFront(nil)
+application.activate(ignoringOtherApps: true)
+CFRunLoopRunInMode(.defaultMode, 0.1, false)
+leakageField.stringValue = ""
+guard leakageWindow.makeFirstResponder(leakageField) else {
+    fail("\(carbonMode ? "Carbon" : "CGEventTap fallback") could not focus the leakage-check field", "rerun in an interactive desktop session and ensure the disposable field opens")
+}
 let label = carbonMode ? "Carbon" : "CGEventTap fallback"
-print("\(label): test Option+0 once in a text field; then complete each prompted Ctrl trial. Vim-in-Terminal/iTerm trials are manual and cannot be verified by this probe. Press Return after each trial.")
+print("\(label): click the disposable text field, press Option+0 once, then press Return in this terminal. Next complete each prompted Ctrl trial. Vim-in-Terminal/iTerm trials are manual and cannot be verified by this probe.")
 DispatchQueue.global().async { _ = readLine(); DispatchQueue.main.async { finished = true } }
 while !finished { _ = CFRunLoopRunInMode(.defaultMode, 0.05, true) }
+guard leakageField.stringValue.isEmpty else {
+    fail("\(label) leaked alternate text into the disposable field: \(leakageField.stringValue.debugDescription)", "inspect hotkey interception; rerun this mode and require an empty text field")
+}
 guard optionCount >= 1, !carbonMode || carbonCount >= 1 else { fail("\(label) missed Option+0; Option+0 \(optionCount), Carbon callback \(carbonCount)", "retry both modes and verify Option+0 is captured before insertion") }
 for trial in ctrlTrials {
     currentCtrlTrial = trial
@@ -75,4 +97,5 @@ for trial in ctrlTrials {
     while !finished { _ = CFRunLoopRunInMode(.defaultMode, 0.05, true) }
     guard ctrlTrialHit else { fail("\(label) missed Ctrl+\(trial.key) in \(trial.context)", "retry this physical key in the named environment; complete every prompted trial") }
 }
-print("PASS: \(label) captured Option+0 and every physical Ctrl+h/j/k/l trial in Terminal and iTerm; Vim-in-Terminal/iTerm remain manual and unverified; verify text-field leakage manually")
+leakageWindow.close()
+print("PASS: \(label) captured Option+0 without text leakage and every physical Ctrl+h/j/k/l trial in Terminal and iTerm; Vim-in-Terminal/iTerm remain manual and unverified")
