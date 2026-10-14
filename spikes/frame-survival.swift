@@ -40,7 +40,8 @@ guard positionSet && sizeSet else {
 }
 Thread.sleep(forTimeInterval: 5)
 let survived: Bool = {
-    guard let afterPos = axValue(window, kAXPositionAttribute), AXValueGetValue(afterPos, .cgPoint, &x), abs(x.x - targetX.x) < 2,
+    guard let afterPos = axValue(window, kAXPositionAttribute), AXValueGetValue(afterPos, .cgPoint, &x),
+          abs(x.x - targetX.x) < 2, abs(x.y - targetX.y) < 2,
           let afterSize = axValue(window, kAXSizeAttribute), AXValueGetValue(afterSize, .cgSize, &s) else { return false }
     return abs(s.width - targetSize.width) < 2 && abs(s.height - targetSize.height) < 2
 }()

@@ -35,7 +35,7 @@ let until = CFAbsoluteTimeGetCurrent() + 10
 while CFAbsoluteTimeGetCurrent() < until { _ = CFRunLoopRunInMode(.defaultMode, 0.05, true) }
 guard holds == baseline else { fail("hold triggered during resting-finger baseline", "inspect key/modifier mapping and hold threshold") }
 print("Press and hold Option+0 for at least 0.7s three times, then press Return.")
-DispatchQueue.global().async { _ = readLine(); finished = true }
+DispatchQueue.global().async { _ = readLine(); DispatchQueue.main.async { finished = true } }
 while !finished { _ = CFRunLoopRunInMode(.defaultMode, 0.05, true) }
 guard holds == 3 else { fail("expected exactly 3 deliberate holds, recorded \(holds)", "repeat three slow holds; inspect threshold and lost key events") }
 print("PASS: zero resting activations and 3/3 deliberate holds at 700ms threshold")

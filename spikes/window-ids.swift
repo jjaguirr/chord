@@ -25,6 +25,7 @@ do {
     guard Set(before.map(\.0)).count == before.count else { fail("window IDs collide within one sample", "inspect substrate ID mapping") }
     Thread.sleep(forTimeInterval: 2)
     let after = try windows()
+    guard Set(after.map(\.0)).count == after.count else { fail("window IDs collide in after sample", "inspect substrate ID mapping") }
     let afterByID = Dictionary(after.map { ($0.0, $0.1) }, uniquingKeysWith: { first, _ in first })
     guard before.allSatisfy({ afterByID[$0.0] == $0.1 }) else { fail("IDs or app associations changed during 2-second idle interval", "inspect ID stability and app-window lifecycle") }
     print("PASS: \(before.count) IDs unique and stable across \(Set(before.map(\.1)).count) apps for 2s; threshold no collisions or changes")

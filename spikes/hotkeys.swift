@@ -63,7 +63,7 @@ CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
 CGEvent.tapEnable(tap: tap, enable: true)
 let label = carbonMode ? "Carbon" : "CGEventTap fallback"
 print("\(label): test Option+0 once in a text field; then complete each prompted Ctrl trial. Vim-in-Terminal/iTerm trials are manual and cannot be verified by this probe. Press Return after each trial.")
-DispatchQueue.global().async { _ = readLine(); finished = true }
+DispatchQueue.global().async { _ = readLine(); DispatchQueue.main.async { finished = true } }
 while !finished { _ = CFRunLoopRunInMode(.defaultMode, 0.05, true) }
 guard optionCount >= 1, !carbonMode || carbonCount >= 1 else { fail("\(label) missed Option+0; Option+0 \(optionCount), Carbon callback \(carbonCount)", "retry both modes and verify Option+0 is captured before insertion") }
 for trial in ctrlTrials {
@@ -71,7 +71,7 @@ for trial in ctrlTrials {
     ctrlTrialHit = false
     print("Test Ctrl+\(trial.key) in \(trial.context), then press Return here.")
     finished = false
-    DispatchQueue.global().async { _ = readLine(); finished = true }
+    DispatchQueue.global().async { _ = readLine(); DispatchQueue.main.async { finished = true } }
     while !finished { _ = CFRunLoopRunInMode(.defaultMode, 0.05, true) }
     guard ctrlTrialHit else { fail("\(label) missed Ctrl+\(trial.key) in \(trial.context)", "retry this physical key in the named environment; complete every prompted trial") }
 }
