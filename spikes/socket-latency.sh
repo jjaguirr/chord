@@ -21,7 +21,7 @@ latencies=$(perl -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC -e '
   $n=$ENV{samples};
   for (1..$n) {
     $start=clock_gettime(CLOCK_MONOTONIC);
-    system("aerospace list-windows --all --format '%{window-id}' >/dev/null 2>&1") == 0 or exit 2;
+    system("aerospace list-windows --all --format \"%{window-id}\" >/dev/null 2>&1") == 0 or exit 2;
     printf "%.3f\n", (clock_gettime(CLOCK_MONOTONIC)-$start)*1000;
   }
 ') || {
