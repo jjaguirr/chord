@@ -42,16 +42,17 @@ plus Rectangle, we stop and write down why.
 
 | C6 spike | Result |
 |---|---|
-| Window IDs across apps | Not run: AeroSpace server disabled; no test app set |
-| AX frame survival | Not run: Accessibility permission/test apps unavailable |
-| Global hotkeys | Not run: Input Monitoring permission and Terminal/iTerm/Vim fixtures unavailable |
-| Window birth size | Not run: no controlled app/window fixture |
-| Unfold frame rate / 20-window Spread | Not run: substrate server disabled; no controlled windows |
+| Window IDs across apps | Not run: AeroSpace server disabled; no multi-app sample |
+| AX frame survival | Not run: Accessibility preflight passed; no disposable app/window fixture |
+| Global hotkeys | Not run: Input Monitoring preflight passed; Terminal/iTerm/Vim fixtures absent |
+| Window birth size | Not run: Accessibility preflight passed; no fresh-window fixture |
+| Unfold frame rate / 20-window Spread | Not run: Accessibility preflight passed; 20-window fixture absent |
 | Socket latency | FAIL: AeroSpace server disabled; 100-request p95 not measured |
-| Mod+0 hold detector | Not run: no standalone detector or controlled resting-finger trial |
+| Mod+0 hold detector | Not run: Input Monitoring preflight passed; controlled resting-finger trial absent |
 
-`spikes/README.md` records the seven probe protocols, thresholds, and fail
-paths. `docs/C6-SUBSTRATE.md` records the evidence and provisional substrate
-recommendation. The installed AeroSpace is `0.20.3-Beta`; its server explicitly
-rejects commands while disabled. No Accessibility or Input Monitoring
-permission was granted. See the report before interpreting any item as a pass.
+All seven spike harnesses and their thresholds/fail paths are in `spikes/`.
+`docs/C6-SUBSTRATE.md` recommends AeroSpace `v0.21.3-Beta` as a provisional,
+replaceable backend with its remaining validation gaps recorded. The installed
+AeroSpace is `0.20.3-Beta`; its server explicitly rejects commands while
+settings were not changed. AX/Input Monitoring preflights passed where checked;
+the behavior trials remain unverified because disposable fixtures were absent.

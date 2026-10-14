@@ -10,14 +10,14 @@ These disposable probes are deliberately outside SwiftPM targets. Run each on a 
 
 | # | Probe | Acceptance / fail path |
 |---|---|---|
-| 1 | `window-ids.swift` | Enumerate windows for at least three distinct apps, relaunch/re-enumerate, compare IDs; fail if IDs collide or do not survive the observed lifecycle. Record the lifecycle boundary; do not imply IDs persist across reboot. |
-| 2 | `frame-survival.swift` | Set a test window frame using AX, poll readback for 5 seconds, and check after app restore/reopen. Fail if the app refuses, restores a different frame, or AX access is unavailable. |
-| 3 | `hotkeys.swift` | Compare Carbon registration and event-tap delivery; verify Option+key is intercepted before text insertion and Ctrl+hjkl in Terminal, iTerm, and Vim. Fail on missing event, typed character leakage, or permission denial. |
-| 4 | `birth-size.swift` | Create test windows and request 333×471; accept exact size or the app-reported minimum clamp. Fail if size cannot be observed/set or exceeds the requested dimensions without a minimum-size explanation. |
-| 5 | `unfold-spread.swift` | Replay frame updates at 30 and 60 fps with elapsed-time skipping; separately time each tick moving 20 windows. Fail if the 60-fps run misses its frame budget or 20-window tick exceeds 16.67 ms. |
-| 6 | [`socket-latency.sh`](socket-latency.sh) | Measure 100 `list-windows` round trips against AeroSpace; fail if p95 exceeds 16.67 ms or requests fail. |
-| 7 | `hold-detector.swift` | Standalone Mod+0 hold detector with repeated deliberate holds and resting-finger observation. Fail on any resting-finger activation or missed deliberate hold. |
+| 1 | [`window-ids.swift`](window-ids.swift) | Require at least three apps, unique IDs, stable app-ID associations across a 2-second idle interval. Does not claim relaunch stability. |
+| 2 | [`frame-survival.swift`](frame-survival.swift) | Set a dedicated app's only AX test window position and size; require both to survive 5 seconds within 2pt; restore original geometry. |
+| 3 | [`hotkeys.swift`](hotkeys.swift) | Run `--carbon` and `--tap-fallback` separately; capture Option+0 before text insertion and Ctrl+hjkl in Terminal/iTerm/Vim; fail on missing events or leakage. |
+| 4 | [`birth-size.swift`](birth-size.swift) | Set a dedicated app's only fresh test window to 333×471; accept exact size or a supplied, documented app minimum clamp; restore original size. |
+| 5 | [`unfold-spread.swift`](unfold-spread.swift) | Replay 120-frame 30/60-fps AX geometry changes with elapsed-time skipping; time 20-window Spread moves; p95 budgets 33.33/16.67/16.67ms. |
+| 6 | [`socket-latency.sh`](socket-latency.sh) | Measure 100 AeroSpace CLI request round trips; p95 ≤16.67ms. Includes CLI startup overhead. |
+| 7 | [`hold-detector.swift`](hold-detector.swift) | Standalone Mod+0 detector with a 10-second resting baseline and three deliberate holds ≥700ms; fail on resting activation or missed hold. |
 
-The Swift probes in this table remain protocols, not implemented harnesses in this checkout; do not interpret them as completed or run. The socket probe is executable and reports `FAIL` when its prerequisites are unavailable. No spike code is imported by product targets; validated behavior must be reimplemented behind product interfaces.
+The `--preflight` flag reports missing permissions or fixtures without installing event taps or changing settings. Each probe is throwaway code outside SwiftPM; never import it into `Sources/`.
 
 Current environment: AeroSpace server is disabled (installed client/server `0.20.3-Beta`), so window, frame, socket, and animation trials cannot run against the substrate here. Accessibility/Input Monitoring permission-dependent trials remain not run; no settings were changed. See [`../docs/C6-SUBSTRATE.md`](../docs/C6-SUBSTRATE.md).
