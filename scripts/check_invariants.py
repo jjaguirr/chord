@@ -10,7 +10,7 @@ Checks (see AGENTS.md "Definition of done"):
   b-window-mutation   Window-mutating calls appear only in Sources/Chord/Executor/.
   c-socket-client     The workspace-backend socket client is used only in
                       Sources/Chord/Backend/.
-  d-spikes-isolation  Nothing under Sources/ or Package.swift references spikes/.
+  d-spikes-isolation  Nothing under Sources/ or Package.swift references the spikes tree.
 
 Limits: only line comments (`//`) are stripped before matching. A block comment
 that mentions a banned call is a false positive (stricter, acceptable). A `//`
@@ -35,6 +35,9 @@ WINDOW_MUTATION = re.compile(
     r"|AXUIElementSetAttributeValue|AXRaiseAction|makeKeyAndOrderFront|orderFront"
     r"|raise|moveTo|move|resize)\s*\("
     r"|\bkAX(?:Position|Size|Raise|Main)\w*"
+    r"|\b(?:\w+\.)+frame(?:\.\w+)*\s*=(?!=|>)"
+    r"|\bframe\.\w+(?:\.\w+)*\s*=(?!=|>)"
+    r"|&\s*(?:\w+\.)*frame\b"
 )
 
 SOCKET_CLIENT = re.compile(
@@ -43,7 +46,7 @@ SOCKET_CLIENT = re.compile(
     r"|\b(?:socket|connect)\s*\("
 )
 
-SPIKE_PATH = re.compile(r"\bspikes/")
+SPIKE_REFERENCE = re.compile(r"\bspikes\b")
 
 
 def swift_files(root, under):
@@ -113,8 +116,8 @@ def check(root):
         candidates.append(root / "Package.swift")
     for path in candidates:
         for number, line in code_lines(path):
-            if SPIKE_PATH.search(line):
-                add("d-spikes-isolation", path, number, "references spikes/")
+            if SPIKE_REFERENCE.search(line):
+                add("d-spikes-isolation", path, number, "references spikes")
             imported = IMPORT.match(line)
             if imported and imported.group(1) in spike_modules:
                 add("d-spikes-isolation", path, number,

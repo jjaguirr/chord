@@ -76,6 +76,26 @@ class InvariantChecks(unittest.TestCase):
         self.write("Sources/ChordCore/Pick.swift", "func f(w: W) { w.move(to: p) }\n")
         self.assertFlagged("b-window-mutation", "move")
 
+    def test_frame_property_assignment_outside_executor_fails(self):
+        self.write("Sources/Chord/Animator.swift", "func step(window: W) { window.frame = rect }\n")
+        self.assertFlagged("b-window-mutation", "frame")
+
+    def test_frame_inout_argument_outside_executor_fails(self):
+        self.write("Sources/Chord/Animator.swift", "func step(w: W) { update(&w.frame) }\n")
+        self.assertFlagged("b-window-mutation", "frame")
+
+    def test_nested_frame_property_assignment_outside_executor_fails(self):
+        self.write("Sources/Chord/Animator.swift", "func step(window: W) { window.frame.origin.x = 1 }\n")
+        self.assertFlagged("b-window-mutation", "frame")
+
+    def test_frame_reads_and_comparisons_are_allowed(self):
+        self.write(
+            "Sources/Chord/Animator.swift",
+            "let frame = window.frame\nif window.frame == rect { use(frame) }\n",
+        )
+        self.assertClean()
+
+
     def test_ax_position_write_outside_executor_fails(self):
         self.write("Sources/Chord/Ax.swift", "let k = kAXPositionAttribute\n")
         self.assertFlagged("b-window-mutation", "kAXPositionAttribute")
@@ -111,7 +131,7 @@ class InvariantChecks(unittest.TestCase):
     # d: nothing under Sources/ or Package.swift reaches into spikes/.
     def test_source_path_reference_to_spikes_fails(self):
         self.write("Sources/Chord/Probe.swift", 'let p = "spikes/probe.swift"\n')
-        self.assertFlagged("d-spikes-isolation", "spikes/")
+        self.assertFlagged("d-spikes-isolation", "spikes")
 
     def test_import_of_spike_module_fails(self):
         self.write("spikes/probe.swift", "let x = 1\n")
@@ -125,10 +145,21 @@ class InvariantChecks(unittest.TestCase):
             'let package = Package(name: "Chord", targets: [.target(name: "P", path: "spikes/p")])\n',
         )
         self.assertFlagged("d-spikes-isolation", "Package.swift")
-
+    def test_package_target_path_equal_to_spikes_fails(self):
+        self.write(
+            "Package.swift",
+            'import PackageDescription\n'
+            'let package = Package(name: "Chord", targets: [.target(name: "P", path: "spikes")])\n',
+        )
+        self.assertFlagged("d-spikes-isolation", "Package.swift")
     def test_spikes_directory_contents_are_not_scanned(self):
         self.write("spikes/probe.swift", 'import Foundation\nlet p = "spikes/x"\n')
         self.assertClean()
+
+    def test_spikes_word_in_comment_is_not_flagged(self):
+        self.write("Sources/Chord/Doc.swift", "// do not import spikes\n")
+        self.assertClean()
+
 
 
 if __name__ == "__main__":
