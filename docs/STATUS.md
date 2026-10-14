@@ -8,7 +8,7 @@ They are estimates, not promises.
 | Piece | State |
 |---|---|
 | `hjkl` aim/chord prototype | Built (single HTML file, browser only) |
-| Swift package core | Built: `ChordCore` has pure `frame()`, `Picker`, and Plan types; executable remains startup-only; frame, Picker, and Plan tests added |
+| Swift package core | Built: `ChordCore` has pure `frame()`, Picker, Plan types, and a timestamp-driven KeyStateMachine (tap/hold, chords, carry, and reshape intents); tests cover core behavior. Executable remains startup-only; no UI, window operations, hotkeys, or backend are implemented |
 | Unfold animation | Pure `frame()` math and tests built; animator not coded |
 | Everything else | Design only |
 
