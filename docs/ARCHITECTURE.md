@@ -21,8 +21,8 @@ sits behind a protocol so it can be replaced.
 | Executor | no | The only component allowed to change windows |
 | Agents | no | Files emitting typed plans |
 
-Exactly one arrow reaches the socket. Make that a CI check, not a
-convention.
+Exactly one arrow reaches the socket. CI enforces the backend boundary;
+see `AGENTS.md` for the check.
 
 ## Rules
 
