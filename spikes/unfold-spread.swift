@@ -153,7 +153,7 @@ for (label, sample, budget) in [
   ("30fps Unfold", at30, 33.33), ("60fps Unfold", at60, 16.67), ("20-window Spread", spread, 16.67),
 ] {
   let sorted = sample.0.sorted()
-  let p95 = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
+  let p95 = sorted[Int(ceil(Double(sorted.count) * 0.95)) - 1]
   guard p95 <= budget else {
     fail(
       "\(label) update p95 \(String(format: "%.2f", p95))ms exceeds \(budget)ms; skipped \(sample.1) frames",
