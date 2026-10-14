@@ -88,7 +88,7 @@ class InvariantChecks(unittest.TestCase):
         self.write("Sources/Chord/Animator.swift", "func step(window: W) { window.frame.origin.x = 1 }\n")
         self.assertFlagged("b-window-mutation", "frame")
     def test_nested_frame_compound_assignment_outside_executor_fails(self):
-        self.write("Sources/Chord/Animator.swift", "func step(window: W) { window.frame.origin.x += 1 }\n")
+        self.write("Sources/Chord/Animator.swift", "func step(window: W) { window.frame.origin.x -= 1 }\n")
         self.assertFlagged("b-window-mutation", "frame")
 
 
@@ -105,8 +105,25 @@ class InvariantChecks(unittest.TestCase):
 
 
     def test_ax_position_write_outside_executor_fails(self):
-        self.write("Sources/Chord/Ax.swift", "let k = kAXPositionAttribute\n")
-        self.assertFlagged("b-window-mutation", "kAXPositionAttribute")
+        self.write(
+            "Sources/Chord/Ax.swift",
+            "AXUIElementSetAttributeValue(element, kAXPositionAttribute, value)\n",
+        )
+        self.assertFlagged("b-window-mutation", "AXUIElementSetAttributeValue")
+
+    def test_ax_position_read_outside_executor_is_allowed(self):
+        self.write(
+            "Sources/Chord/Ax.swift",
+            "AXUIElementCopyAttributeValue(element, kAXPositionAttribute, &value)\n",
+        )
+        self.assertClean()
+
+    def test_string_containing_line_comment_does_not_hide_window_mutation(self):
+        self.write(
+            "Sources/Chord/Animator.swift",
+            'let url = "https://example.invalid"; window.setFrame(rect)\n',
+        )
+        self.assertFlagged("b-window-mutation", "setFrame")
 
     def test_mutation_inside_executor_is_allowed(self):
         self.write("Sources/Chord/Executor/Apply.swift", "func apply(w: W) { w.setFrame(r); w.raise() }\n")

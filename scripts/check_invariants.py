@@ -12,9 +12,9 @@ Checks (see AGENTS.md "Definition of done"):
                       Sources/Chord/Backend/.
   d-spikes-isolation  Nothing under Sources/ or Package.swift references the spikes tree.
 
-Limits: only line comments (`//`) are stripped before matching. A block comment
-that mentions a banned call is a false positive (stricter, acceptable). A `//`
-inside a string literal hides the rest of that line; that is a known gap.
+Limits: line comments (`//`) are stripped before matching, except when they
+occur inside a double-quoted string literal. A block comment that mentions a
+banned call is a false positive (stricter, acceptable).
 """
 import re
 import sys
@@ -34,7 +34,6 @@ WINDOW_MUTATION = re.compile(
     r"\b(?:setFrame|setFrameOrigin|setFrameSize|setPosition|setSize|setContentSize"
     r"|AXUIElementSetAttributeValue|AXRaiseAction|makeKeyAndOrderFront|orderFront"
     r"|raise|moveTo|move|resize)\s*\("
-    r"|\bkAX(?:Position|Size|Raise|Main)\w*"
     r"|\b(?:\w+\.)+frame(?:\.\w+)*\s*(?:(?:[+\-*/%&|^~]+|<<|>>)=|(?<![=!<>])=(?!=|>))"
     r"|\bframe\.\w+(?:\.\w+)*\s*(?:(?:[+\-*/%&|^~]+|<<|>>)=|(?<![=!<>])=(?!=|>))"
     r"|&\s*(?:\w+\.)*frame\b"
@@ -56,11 +55,20 @@ def swift_files(root, under):
     return sorted(base.rglob("*.swift"))
 
 
+LINE_COMMENT_OR_STRING = re.compile(r'"(?:\\.|[^"\\])*"|//.*')
+
+
+def strip_line_comment(line):
+    return LINE_COMMENT_OR_STRING.sub(
+        lambda match: "" if match.group(0).startswith("//") else match.group(0),
+        line,
+    )
+
+
 def code_lines(path):
     text = path.read_text(encoding="utf-8")
     for number, line in enumerate(text.splitlines(), start=1):
-        yield number, re.sub(r"//.*", "", line)
-
+        yield number, strip_line_comment(line)
 
 def under(path, root, prefix):
     return path.relative_to(root).as_posix().startswith(prefix + "/")
