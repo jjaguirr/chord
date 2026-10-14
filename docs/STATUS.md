@@ -1,13 +1,13 @@
 # STATUS.md
 
-Bootstrap steps 1-4 are built: a dependency-free Swift package with pure frame
-math, the Picker, and their tests, not a functioning window manager. Estimates
+Bootstrap steps 1-5 are built: a dependency-free Swift package with pure frame
+math, the Picker, the Plan types, and their tests, not a functioning window manager. Estimates
 below assume ~10 focused hours a week. They are estimates, not promises.
 
 | Piece | State |
 |---|---|
 | `hjkl` aim/chord prototype | Built (single HTML file, browser only) |
-| Swift package core | Built: `ChordCore` has pure `frame()` and `Picker`; executable remains startup-only; frame and Picker tests added |
+| Swift package core | Built: `ChordCore` has pure `frame()`, `Picker`, and Plan types (`Workspace` 1-8, `Place`, `Assignment`, `Plan` with strict Codable, validation, rules + bench fallback, and inverse-carrying `Action`s); executable remains startup-only; frame, Picker, and Plan tests added |
 | Unfold animation | Pure `frame()` math and tests built; animator not coded |
 | Everything else | Design only |
 
