@@ -6,10 +6,7 @@ import Foundation
 var restoreTargets: [(AXUIElement, CGPoint, CGSize)] = []
 func restoreFrames() { for (window, point, size) in restoreTargets { var p = point, s = size; if let pv = AXValueCreate(.cgPoint, &p), let sv = AXValueCreate(.cgSize, &s) { _ = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, pv); _ = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sv) } } }
 func fail(_ s: String, _ path: String) -> Never { restoreFrames(); fputs("FAIL: \(s); fail path: \(path)\n", stderr); exit(1) }
-if CommandLine.arguments.contains("--preflight") {
-    guard AXIsProcessTrusted() else { fail("not run: Accessibility permission unavailable", "grant Accessibility to terminal in a disposable account, then rerun without --preflight") }
-    fail("not run: 20-window disposable fixture unavailable", "launch the test app with 20 accessible windows and rerun")
-}
+
 func axWindows(_ app: NSRunningApplication) -> [AXUIElement] {
     let root = AXUIElementCreateApplication(app.processIdentifier); var value: CFTypeRef?
     guard AXUIElementCopyAttributeValue(root, kAXWindowsAttribute as CFString, &value) == .success else { return [] }

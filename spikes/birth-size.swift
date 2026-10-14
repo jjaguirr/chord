@@ -4,10 +4,7 @@ import ApplicationServices
 import Foundation
 
 func fail(_ message: String, _ remedy: String) -> Never { fputs("FAIL: \(message); fail path: \(remedy)\n", stderr); exit(1) }
-if CommandLine.arguments.contains("--preflight") {
-    guard AXIsProcessTrusted() else { fail("not run: Accessibility permission unavailable", "grant Accessibility to terminal in a disposable account, then rerun without --preflight") }
-    fail("not run: no fresh test-window fixture or app minimum supplied", "launch a dedicated test app, create a fresh window, and rerun with its bundle ID")
-}
+
 func size(_ e: AXUIElement) -> CGSize? { var raw: CFTypeRef?; guard AXUIElementCopyAttributeValue(e, kAXSizeAttribute as CFString, &raw) == .success, let value = raw, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }; let axValue = unsafeBitCast(value, to: AXValue.self); var result = CGSize.zero; guard AXValueGetValue(axValue, .cgSize, &result) else { return nil }; return result }
 guard CommandLine.arguments.count == 2 || CommandLine.arguments.count == 4 else { fail("usage: birth-size.swift <disposable-test-app-bundle-id> [app-min-width app-min-height]", "create a fresh test window; pass the documented app minimum dimensions if it exceeds the target") }
 guard AXIsProcessTrusted() else { fail("Accessibility permission unavailable", "grant Accessibility to terminal in a disposable account; this probe does not change permissions") }

@@ -5,15 +5,13 @@ import Foundation
 
 func fail(_ reason: String, _ path: String) -> Never { fputs("FAIL: \(reason); fail path: \(path)\n", stderr); exit(1) }
 func axValue(_ element: AXUIElement, _ attribute: String) -> AXValue? { var value: CFTypeRef?; guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success, let raw = value, CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }; return unsafeBitCast(raw, to: AXValue.self) }
-if CommandLine.arguments.contains("--preflight") {
-    guard AXIsProcessTrusted() else { fail("not run: Accessibility permission unavailable", "grant Accessibility to terminal in a disposable account, then rerun without --preflight") }
-    fail("not run: no disposable app/window fixture supplied", "launch a dedicated test app and run with its bundle ID")
-}
+
 guard CommandLine.arguments.count == 2 else { fail("usage: frame-survival.swift <disposable-test-app-bundle-id>", "launch a disposable app with a visible test window and pass its bundle ID") }
 guard AXIsProcessTrusted() else { fail("Accessibility permission unavailable", "grant Accessibility to the terminal in a disposable test account; this probe does not change permissions") }
 guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: CommandLine.arguments[1]).first else { fail("test app is not running", "launch the disposable test app and rerun") }
 let root = AXUIElementCreateApplication(app.processIdentifier)
-guard let raw = axValue(root, kAXWindowsAttribute) as? [AXUIElement], raw.count == 1, let window = raw.first else { fail("expected exactly one accessible test window", "close other app windows and launch one standard AX test window") }
+var rawWindows: CFTypeRef?
+guard AXUIElementCopyAttributeValue(root, kAXWindowsAttribute as CFString, &rawWindows) == .success, let raw = rawWindows as? [AXUIElement], raw.count == 1, let window = raw.first else { fail("expected exactly one accessible test window", "close other app windows and launch one standard AX test window") }
 guard let rawPos = axValue(window, kAXPositionAttribute), let rawSize = axValue(window, kAXSizeAttribute) else { fail("cannot read AX frame", "use a test app exposing AX position and size") }
 var x = CGPoint.zero, s = CGSize.zero
 guard AXValueGetValue(rawPos, .cgPoint, &x), AXValueGetValue(rawSize, .cgSize, &s) else { fail("AX frame has unexpected type", "inspect test app AX attributes") }

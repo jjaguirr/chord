@@ -9,18 +9,17 @@ var holdFired = false
 var downAt: UInt64 = 0
 var holds = 0
 func fail(_ text: String, _ remedy: String) -> Never { fputs("FAIL: \(text); fail path: \(remedy)\n", stderr); exit(1) }
-if CommandLine.arguments.contains("--preflight") {
-    guard CGPreflightListenEventAccess() else { fail("not run: Input Monitoring permission unavailable", "grant Input Monitoring in a disposable account, then rerun without --preflight") }
-    fail("not run: interactive resting-finger and deliberate-hold trial not supplied", "perform a controlled key test, then rerun without --preflight")
-}
+
 guard CGPreflightListenEventAccess() else { fail("Input Monitoring permission unavailable", "grant Input Monitoring to terminal in a disposable test account; no settings are changed") }
 var finished = false
 let mask = (CGEventMask(1) << CGEventType.keyDown.rawValue) | (CGEventMask(1) << CGEventType.keyUp.rawValue)
 guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly, eventsOfInterest: mask, callback: { _, type, event, _ in
-    let key = event.getIntegerValueField(.keyboardEventKeycode) == keyCode0
+    let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+    let key = keyCode == keyCode0
+    let optionKey = keyCode == Int64(kVK_Option) || keyCode == Int64(kVK_RightOption)
     let option = event.flags.contains(.maskAlternate)
     if key && option && type == .keyDown && !optionDown { optionDown = true; holdFired = false; downAt = DispatchTime.now().uptimeNanoseconds }
-    if key && type == .keyUp { optionDown = false }
+    if (key && type == .keyUp) || (optionKey && type == .keyUp) { optionDown = false }
     return Unmanaged.passUnretained(event)
 }, userInfo: nil) else { fail("could not install global event tap", "grant Input Monitoring to terminal and rerun") }
 let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)

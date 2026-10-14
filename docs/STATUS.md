@@ -43,16 +43,17 @@ plus Rectangle, we stop and write down why.
 | C6 spike | Result |
 |---|---|
 | Window IDs across apps | Not run: AeroSpace server disabled; no multi-app sample |
-| AX frame survival | Not run: Accessibility preflight passed; no disposable app/window fixture |
-| Global hotkeys | Not run: Input Monitoring preflight passed; Terminal/iTerm/Vim fixtures absent |
-| Window birth size | Not run: Accessibility preflight passed; no fresh-window fixture |
-| Unfold frame rate / 20-window Spread | Not run: Accessibility preflight passed; 20-window fixture absent |
+| AX frame survival | Not run: no disposable app/window fixture |
+| Global hotkeys | Not run: Terminal/iTerm/Vim fixtures absent; Vim-specific behavior is manual and unverified by the probe |
+| Window birth size | Not run: no fresh-window fixture |
+| Unfold frame rate / 20-window Spread | Not run: 20-window fixture absent |
 | Socket latency | FAIL: AeroSpace server disabled; 100-request p95 not measured |
-| Mod+0 hold detector | Not run: Input Monitoring preflight passed; controlled resting-finger trial absent |
+| Mod+0 hold detector | Not run: controlled resting-finger trial absent |
 
 All seven spike harnesses and their thresholds/fail paths are in `spikes/`.
 `docs/C6-SUBSTRATE.md` recommends AeroSpace `v0.21.3-Beta` as a provisional,
 replaceable backend with its remaining validation gaps recorded. The installed
 AeroSpace is `0.20.3-Beta`; its server explicitly rejects commands while
-settings were not changed. AX/Input Monitoring preflights passed where checked;
-the behavior trials remain unverified because disposable fixtures were absent.
+Accessibility/Input Monitoring permission checks succeeded where attempted;
+behavior trials remain unverified because disposable fixtures were absent.
+Vim-specific hotkey behavior is manual and unverified by the hotkey probe.
