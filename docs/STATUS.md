@@ -22,7 +22,7 @@ no UI, window operations, hotkeys, or backend are implemented.
 Bootstrap step 4 now includes a pure `Picker` and deterministic property and rule tests.
 Picker inputs carry geometry, layer, MRU, coverage, workspace/minimized, and stack metadata; the core has no window or OS dependencies.
 `swift build` succeeds. `swift test` is currently blocked because this machine's Swift installation cannot load the `TestingMacros` plugin; the existing test target fails before tests execute.
-Picker diagonal tie-breaking uses explicit pure screen bounds; C2 horizontal z-fallback remains a no-op when no spatial target exists (adjacent-monitor crossing is out of scope).
+Picker supports came-from preference on exact primary-score ties; pathological layouts may remain non-reciprocal under the required tie order. Diagonal tie-breaking uses explicit pure screen bounds; horizontal z-fallback is a no-op when no spatial target exists.
 
 ## Milestones
 

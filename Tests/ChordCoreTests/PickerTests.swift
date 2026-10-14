@@ -49,14 +49,16 @@ struct PickerTests {
             }
         }
     }
-    @Test func reversibilityOverridesMruWhenNecessary() {
+    @Test func approvedThreeWindowTiePrefersCameFrom() {
         let windows = [
             PickerWindow(id: 1, rect: PickerRect(x: 0, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
             PickerWindow(id: 2, rect: PickerRect(x: 120, y: 0, width: 100, height: 100), layer: 0, mru: 1, coverage: 0),
-            PickerWindow(id: 0, rect: PickerRect(x: -10, y: 0, width: 100, height: 100), layer: 0, mru: 10, coverage: 0),
+            PickerWindow(id: 0, rect: PickerRect(x: 0, y: 0, width: 100, height: 100), layer: 0, mru: 10, coverage: 0),
         ]
         #expect(Picker.pick(from: 1, direction: .l, windows: windows) == 2)
-        #expect(Picker.pick(from: 2, direction: .h, windows: windows) == 1)
+        #expect(Picker.pick(from: 2, direction: .h, windows: windows) == 0)
+        #expect(Picker.pick(from: 2, direction: .h, cameFrom: 1,
+                            windows: windows, screenBounds: testScreenBounds) == 1)
     }
 
     @Test func mruPrecedesPerpendicularOffsetWithinScoreBucket() {
@@ -187,23 +189,15 @@ struct PickerTests {
         ]
         #expect(Picker.pick(from: 0, direction: .l, windows: windows) == 2)
     }
-    @Test func reciprocalCandidateWinsEqualScoreBucketBeforeMru() {
-        let windows = [
-            PickerWindow(id: 1, rect: PickerRect(x: 0, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
-            PickerWindow(id: 2, rect: PickerRect(x: 120, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
-            PickerWindow(id: 0, rect: PickerRect(x: -10, y: 0, width: 100, height: 100), layer: 0, mru: 10, coverage: 0),
-        ]
-        #expect(Picker.pick(from: 1, direction: .l, windows: windows) == 2)
-        #expect(Picker.pick(from: 2, direction: .h, windows: windows) == 1)
-    }
-    @Test func reciprocityOnlyOverridesExactTiesOutsideNamedCase() {
+    @Test func reciprocityDoesNotOverrideUnequalDistanceWithinBucket() {
         let windows = [
             PickerWindow(id: 1, rect: PickerRect(x: 0, y: 0, width: 100, height: 100), layer: 0, mru: 1, coverage: 0),
             PickerWindow(id: 2, rect: PickerRect(x: 120, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
-            PickerWindow(id: 0, rect: PickerRect(x: -10, y: 0, width: 100, height: 100), layer: 0, mru: 20, coverage: 0),
+            PickerWindow(id: 0, rect: PickerRect(x: -8, y: 0, width: 100, height: 100), layer: 0, mru: 20, coverage: 0),
             PickerWindow(id: 3, rect: PickerRect(x: 120, y: 500, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
         ]
-        #expect(Picker.pick(from: 2, direction: .h, windows: windows) == 0)
+        #expect(Picker.pick(from: 2, direction: .h, cameFrom: 1,
+                            windows: windows, screenBounds: testScreenBounds) == 0)
     }
 
 

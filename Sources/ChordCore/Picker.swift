@@ -42,6 +42,8 @@ public struct PickDirection: Equatable, Sendable {
     public static let j = PickDirection(x: 0, y: 1)
 }
 
+/// Reversibility is preferred only on exact primary-score ties; pathological layouts
+/// can remain non-reciprocal under the required tie order. Horizontal z-fallback is a no-op.
 public enum Picker {
     private static let grid = 8.0
     private static func snapped(_ value: Double) -> Double { (value / grid).rounded() * grid }
@@ -61,14 +63,14 @@ public enum Picker {
 
     /// Returns nil for a reserved cancel chord or when no directional target exists.
     public static func pick(from originID: Int, direction: PickDirection,
-                            windows: [PickerWindow], screenBounds: PickerRect) -> Int? {
-        choose(from: originID, direction: direction, windows: windows, screenBounds: screenBounds,
-               reciprocal: true, depth: 0)
+                            cameFrom: Int? = nil, windows: [PickerWindow], screenBounds: PickerRect) -> Int? {
+        choose(from: originID, direction: direction, cameFrom: cameFrom, windows: windows,
+               screenBounds: screenBounds, reciprocal: true)
     }
 
-    private static func choose(from originID: Int, direction: PickDirection,
+    private static func choose(from originID: Int, direction: PickDirection, cameFrom: Int?,
                                windows: [PickerWindow], screenBounds: PickerRect,
-                               reciprocal: Bool, depth: Int) -> Int? {
+                               reciprocal: Bool) -> Int? {
         guard direction.x != 0 || direction.y != 0 else { return nil }
         let normalized = windows.map { w in
             PickerWindow(id: w.id, rect: snapped(w.rect), layer: w.layer, mru: w.mru,
@@ -112,45 +114,34 @@ public enum Picker {
             if !straight && a.facingTie != b.facingTie { return a.facingTie < b.facingTie }
             return a.window.id < b.window.id
         }
-        func ranked(_ pool: [Candidate], beam: Bool) -> [Candidate] {
-            guard depth < 2 else { return pool.sorted { baseOrder($0, $1, beam: beam) } }
-            let returns = Dictionary(uniqueKeysWithValues: pool.map { c in
-                (c.window.id, choose(from: c.window.id, direction: direction.opposite, windows: windows,
-                                    screenBounds: screenBounds, reciprocal: false, depth: depth + 1) == originID)
-            })
-            return pool.sorted { a, b in
-                let sameBucket = Int((score(a, beam: beam) / 16).rounded(.down)) ==
-                    Int((score(b, beam: beam) / 16).rounded(.down))
-                let exactScoreTie = score(a, beam: beam) == score(b, beam: beam)
-                let namedThreeWindowException = normalized.count == 3 && sameBucket
-                if (exactScoreTie || namedThreeWindowException) &&
-                    returns[a.window.id] != returns[b.window.id] {
-                    return returns[a.window.id] == true
-                }
-                return baseOrder(a, b, beam: beam)
+        func ranked(_ pool: [Candidate], beam: Bool) -> Candidate? {
+            guard let best = pool.min(by: { baseOrder($0, $1, beam: beam) }) else { return nil }
+            guard let cameFrom,
+                  let preferred = pool.first(where: { $0.window.id == cameFrom }),
+                  score(preferred, beam: beam) == score(best, beam: beam),
+                  (preferred.window.layer == origin.layer) == (best.window.layer == origin.layer) else {
+                return best
             }
+            return preferred
         }
         if candidates.isEmpty {
             let target = zFallback(origin: origin, direction: direction, windows: normalized)
             guard reciprocal, let target else { return target }
-            return choose(from: target, direction: direction.opposite, windows: windows,
-                          screenBounds: screenBounds, reciprocal: false, depth: depth + 1) == originID ? target : nil
+            return choose(from: target, direction: direction.opposite, cameFrom: originID,
+                          windows: windows, screenBounds: screenBounds, reciprocal: false) == originID ? target : nil
         }
         let beamCandidates = straight ? candidates.filter { $0.overlap >= 0.25 } : []
         let tiers: [([Candidate], Bool)] = beamCandidates.isEmpty
             ? [(candidates, false)] : [(beamCandidates, true), (candidates.filter { $0.overlap < 0.25 }, false)]
         for (pool, beam) in tiers where !pool.isEmpty {
-            let order = ranked(pool, beam: beam)
-            if !reciprocal { return order.first?.window.id }
-            guard let target = order.first else { continue }
-            if choose(from: target.window.id, direction: direction.opposite, windows: windows,
-                      screenBounds: screenBounds, reciprocal: false, depth: depth + 1) == originID {
+            guard let target = ranked(pool, beam: beam) else { continue }
+            if !reciprocal { return target.window.id }
+            if choose(from: target.window.id, direction: direction.opposite, cameFrom: originID,
+                      windows: windows, screenBounds: screenBounds, reciprocal: false) == originID {
                 return target.window.id
             }
         }
-        return tiers.compactMap { pool, beam in
-            pool.isEmpty ? nil : ranked(pool, beam: beam).first?.window.id
-        }.first ?? nil
+        return tiers.compactMap { pool, beam in ranked(pool, beam: beam)?.window.id }.first
     }
 
     private static func zFallback(origin: PickerWindow, direction: PickDirection,
