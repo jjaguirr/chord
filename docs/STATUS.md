@@ -1,13 +1,14 @@
 # STATUS.md
 
-Bootstrap steps 1-5 are built: a dependency-free Swift package with pure frame
-math, the Picker, the Plan types, and their tests, not a functioning window manager. Estimates
-below assume ~10 focused hours a week. They are estimates, not promises.
+Bootstrap steps 1–5 are built: a dependency-free Swift package with pure frame
+math, the Picker, and Plan types with strict Codable and fallback, not a
+functioning window manager. Estimates below assume ~10 focused hours a week.
+They are estimates, not promises.
 
 | Piece | State |
 |---|---|
 | `hjkl` aim/chord prototype | Built (single HTML file, browser only) |
-| Swift package core | Built: `ChordCore` has pure `frame()`, `Picker`, and Plan types (`Workspace` 1-8, `Place`, `Assignment`, `Plan` with strict Codable, validation, rules + bench fallback, and inverse-carrying `Action`s); executable remains startup-only; frame, Picker, and Plan tests added |
+| Swift package core | Built: `ChordCore` has pure `frame()`, `Picker`, and Plan types; executable remains startup-only; frame, Picker, and Plan tests added |
 | Unfold animation | Pure `frame()` math and tests built; animator not coded |
 | Everything else | Design only |
 
@@ -16,7 +17,8 @@ below assume ~10 focused hours a week. They are estimates, not promises.
 With Swift 6.0 or newer, `swift build` builds the package and `swift run Chord`
 prints `Chord: bootstrap only; window management is not implemented.` then exits.
 `swift build --build-tests` compiles the test target. Tests cover frame
-behavior, generated landmarks, and Picker rules and properties; no UI, window
+behavior, generated landmarks, Picker rules and properties, and Plan
+validation, decoding, fallback, and action reversibility; no UI, window
 operations, hotkeys, or backend are implemented.
 
 `swift build` succeeds. `swift test` is currently blocked because this machine's Swift installation cannot load the `TestingMacros` plugin; the existing test target fails before tests execute.
