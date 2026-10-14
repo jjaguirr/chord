@@ -4,8 +4,27 @@ import ApplicationServices
 import Foundation
 
 var restoreTargets: [(AXUIElement, CGPoint, CGSize)] = []
-func restoreFrames() { for (window, point, size) in restoreTargets { var p = point, s = size; if let pv = AXValueCreate(.cgPoint, &p), let sv = AXValueCreate(.cgSize, &s) { _ = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, pv); _ = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sv) } } }
-func fail(_ s: String, _ path: String) -> Never { restoreFrames(); fputs("FAIL: \(s); fail path: \(path)\n", stderr); exit(1) }
+func restoreFrames() -> Bool {
+    var restored = true
+    for (window, point, size) in restoreTargets {
+        var p = point, s = size
+        guard let pv = AXValueCreate(.cgPoint, &p), let sv = AXValueCreate(.cgSize, &s) else { restored = false; continue }
+        let positionSet = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, pv) == .success
+        let sizeSet = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sv) == .success
+        let actual = frame(window)
+        let matches = actual.map {
+            abs($0.0.x - point.x) < 2 && abs($0.0.y - point.y) < 2 &&
+                abs($0.1.width - size.width) < 2 && abs($0.1.height - size.height) < 2
+        } ?? false
+        restored = positionSet && sizeSet && matches && restored
+    }
+    return restored
+}
+func fail(_ s: String, _ path: String, restore: Bool = true) -> Never {
+    let restorationFailed = restore && !restoreFrames()
+    fputs("FAIL: \(s)\(restorationFailed ? "; restoration fail path: restore all original window frames" : ""); fail path: \(path)\n", stderr)
+    exit(1)
+}
 
 func axWindows(_ app: NSRunningApplication) -> [AXUIElement] {
     let root = AXUIElementCreateApplication(app.processIdentifier); var value: CFTypeRef?
@@ -49,7 +68,7 @@ func run(_ fps: Double, _ selected: [AXUIElement], unfold: Bool) -> ([Double], I
                 : base.1
             let targetPoint = unfold
                 ? CGPoint(x: base.0.x + (visible.minX + (visible.width - targetSize.width) / 2 - base.0.x) * progress, y: base.0.y + (visible.minY + (visible.height - targetSize.height) / 2 - base.0.y) * progress)
-                : CGPoint(x: base.0.x + CGFloat(i * 2), y: base.0.y)
+                : CGPoint(x: base.0.x + CGFloat(tick + 1) * 2 + CGFloat(i * 2), y: base.0.y)
             let interpolatedSize = unfold ? CGSize(width: base.1.width + (targetSize.width - base.1.width) * progress, height: base.1.height + (targetSize.height - base.1.height) * progress) : targetSize
             guard set(w, targetPoint, interpolatedSize) else { return nil }
         }
@@ -67,6 +86,9 @@ for (label, sample, budget) in [("30fps Unfold", at30, 33.33), ("60fps Unfold", 
     let sorted = sample.0.sorted(), p95 = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
     guard p95 <= budget else { fail("\(label) update p95 \(String(format: "%.2f", p95))ms exceeds \(budget)ms; skipped \(sample.1) frames", "profile AX calls, enable elapsed-time skipping, or select proxy rendering") }
 }
-restoreFrames()
+guard restoreFrames() else {
+    restoreTargets.removeAll()
+    fail("failed restoring original window frames", "restore the disposable test windows manually", restore: false)
+}
 restoreTargets.removeAll()
 print("PASS: Unfold 30/60fps and 20-window Spread p95 within 33.33/16.67/16.67ms; elapsed skipping counts \(at30.1)/\(at60.1)/\(spread.1); original frames restored")

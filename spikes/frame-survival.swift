@@ -16,20 +16,34 @@ guard let rawPos = axValue(window, kAXPositionAttribute), let rawSize = axValue(
 var x = CGPoint.zero, s = CGSize.zero
 guard AXValueGetValue(rawPos, .cgPoint, &x), AXValueGetValue(rawSize, .cgSize, &s) else { fail("AX frame has unexpected type", "inspect test app AX attributes") }
 let originalX = x, originalS = s
-func restore() { var restorePos = originalX, restoreSize = originalS; if let p = AXValueCreate(.cgPoint, &restorePos), let z = AXValueCreate(.cgSize, &restoreSize) { _ = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, p); _ = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, z) } }
+func restore() -> Bool {
+    var restorePos = originalX, restoreSize = originalS
+    guard let p = AXValueCreate(.cgPoint, &restorePos), let z = AXValueCreate(.cgSize, &restoreSize) else { return false }
+    let positionSet = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, p) == .success
+    let sizeSet = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, z) == .success
+    guard positionSet && sizeSet, let restoredPos = axValue(window, kAXPositionAttribute),
+          let restoredSize = axValue(window, kAXSizeAttribute) else { return false }
+    var point = CGPoint.zero, size = CGSize.zero
+    guard AXValueGetValue(restoredPos, .cgPoint, &point), AXValueGetValue(restoredSize, .cgSize, &size) else { return false }
+    return abs(point.x - originalX.x) < 2 && abs(point.y - originalX.y) < 2 &&
+        abs(size.width - originalS.width) < 2 && abs(size.height - originalS.height) < 2
+}
 let targetX = CGPoint(x: x.x + 37, y: x.y + 29)
 let targetSize = CGSize(width: s.width + 20, height: s.height + 20)
 var newPos = targetX, newSize = targetSize
 guard let posValue = AXValueCreate(.cgPoint, &newPos), let sizeValue = AXValueCreate(.cgSize, &newSize) else { fail("could not encode AX frame", "inspect AX coordinate support") }
 let positionSet = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, posValue) == .success
 let sizeSet = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue) == .success
-guard positionSet && sizeSet else { restore(); fail("AX refused requested test frame", "record app refusal and select another substrate/window API") }
+guard positionSet && sizeSet else {
+    guard restore() else { fail("failed restoring original frame after refused update", "restore the disposable test window manually") }
+    fail("AX refused requested test frame", "record app refusal and select another substrate/window API")
+}
 Thread.sleep(forTimeInterval: 5)
 let survived: Bool = {
     guard let afterPos = axValue(window, kAXPositionAttribute), AXValueGetValue(afterPos, .cgPoint, &x), abs(x.x - targetX.x) < 2,
           let afterSize = axValue(window, kAXSizeAttribute), AXValueGetValue(afterSize, .cgSize, &s) else { return false }
     return abs(s.width - targetSize.width) < 2 && abs(s.height - targetSize.height) < 2
 }()
-restore()
+guard restore() else { fail("failed restoring original frame", "restore the disposable test window manually") }
 guard survived else { fail("requested frame did not survive 5 seconds", "record app behavior and select another substrate/window API") }
 print("PASS: AX frame position and size survived 5s within 2pt; threshold 5s; original frame restored")
