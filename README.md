@@ -6,7 +6,7 @@ windows live and **how you move between them** — and leaves **size** to you.
 
 > **Status: pre-alpha, bootstrap only.** The dependency-free Swift package
 > builds and prints a startup message; it is not a functioning window manager.
-> The browser input prototype remains separate. Product behavior is design-only.
+> The browser input prototype remains separate. The pure core now includes a timestamp-driven key state machine; integration into the app and most product behavior remain design-only.
 
 ## The bet
 
@@ -46,9 +46,10 @@ swift build --build-tests
 
 `Chord` prints `Chord: bootstrap only; window management is not implemented.`
 and exits. It does not access or change windows, register hotkeys, or start UI.
-`ChordCore` contains pure `frame()` math, a spatial `Picker`, and Plan types
-with strict decoding and fallback; plans cannot name the vault. `ChordCoreTests`
-has behavioral tests for these core components. `swift build --build-tests`
+`ChordCore` contains pure `frame()` math, a spatial `Picker`, Plan types with
+strict decoding and fallback, and a timestamp-driven `KeyStateMachine` for
+tap/hold, directional chords, carry, and reshape intents. `ChordCoreTests` has
+behavioral tests for these pure components. `swift build --build-tests`
 checks that the test target compiles.
 
 Bootstrap steps 1–5 are complete; see [STATUS.md](docs/STATUS.md) for current
