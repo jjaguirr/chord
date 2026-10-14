@@ -1,27 +1,27 @@
 # STATUS.md
 
-Bootstrap step 1 is built: a dependency-free Swift package, not a functioning
-window manager. Estimates below assume ~10 focused hours a week. They are
-estimates, not promises.
+Bootstrap steps 1-3 are built: a dependency-free Swift package with pure frame
+math and its tests, not a functioning window manager. Estimates below assume
+~10 focused hours a week. They are estimates, not promises.
 
 | Piece | State |
 |---|---|
 | `hjkl` aim/chord prototype | Built (single HTML file, browser only) |
-| Swift package skeleton | Built: empty pure `ChordCore`, startup-only `Chord` executable, empty `ChordCoreTests` target |
-| Unfold animation | Spec + math written; not coded |
+| Swift package skeleton | Built: pure `ChordCore` has `frame()`; executable remains startup-only; frame tests added |
+| Unfold animation | Pure `frame()` math and tests built; animator not coded |
 | Everything else | Design only |
 
 ## Bootstrap
 
 With Swift 6.0 or newer, `swift build` builds the package and `swift run Chord`
 prints `Chord: bootstrap only; window management is not implemented.` then exits.
-`swift build --build-tests` compiles the intentionally empty test target.
-No behavioral tests exist yet; no UI, window operations, hotkeys, or backend
-are implemented.
+`swift build --build-tests` compiles the frame test target.
+The tests cover frame stops, interpolation, boundaries, and generated landmarks;
+no UI, window operations, hotkeys, or backend are implemented.
 
-Next is bootstrap step 2: port and test pure `frame()`, then generate fixtures
-and implement the Picker with its property tests before any real window wiring.
-The referenced `CHARTER.md` and `ROLES.md` specs are absent from this checkout.
+Next is bootstrap step 4: implement the Picker and its property tests before
+any real window wiring. The referenced `CHARTER.md` and `ROLES.md` specs are
+absent from this checkout.
 
 ## Milestones
 

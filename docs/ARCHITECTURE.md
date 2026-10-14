@@ -15,7 +15,7 @@ sits behind a protocol so it can be replaced.
 | InputLayer | no | Registered Carbon hotkeys; CGEventTap fallback |
 | KeyStateMachine | yes | Tap/hold, chords, held-key repeat |
 | Picker | yes | Rects + direction vector → target window |
-| Unfold | yes | `frame()` + animator |
+| Unfold | yes | Pure `frame()` geometry |
 | Spread | no | View mode with remembered frames |
 | WorkspaceBackend | no | AeroSpace socket implementation |
 | Executor | no | The only component allowed to change windows |

@@ -46,13 +46,11 @@ swift build --build-tests
 
 `Chord` prints `Chord: bootstrap only; window management is not implemented.`
 and exits. It does not access or change windows, register hotkeys, or start UI.
-`ChordCore` is an empty pure library; `ChordCoreTests` is an intentionally
-empty test target, with no placeholder tests. `swift build --build-tests`
-checks that the test target compiles; there are no behavioral tests yet.
+`ChordCore` contains the pure `frame()` math; `ChordCoreTests` includes
+behavioral tests for it. `swift build --build-tests` checks that the test
+target compiles.
 
-Bootstrap step 1 is complete. Next: implement and test the pure `frame()`
-function, generate its fixtures, then implement the property-tested Picker
-in the order specified by the project bootstrap instructions.
+Bootstrap step 1 is complete; see [STATUS.md](docs/STATUS.md) for current progress.
 
 ## Docs
 
