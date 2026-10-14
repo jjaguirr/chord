@@ -19,9 +19,9 @@ prints `Chord: bootstrap only; window management is not implemented.` then exits
 The tests cover frame stops, interpolation, boundaries, and generated landmarks;
 no UI, window operations, hotkeys, or backend are implemented.
 
-Next is bootstrap step 4: implement the Picker and its property tests before
-any real window wiring. The referenced `CHARTER.md` and `ROLES.md` specs are
-absent from this checkout.
+Bootstrap step 4 now includes a pure `Picker` and deterministic property and rule tests.
+Picker inputs carry geometry, layer, MRU, coverage, workspace/minimized, stack, and monitor metadata; the core has no window or OS dependencies.
+`swift build` succeeds. `swift test` is currently blocked because this machine's Swift installation cannot load the `TestingMacros` plugin; the existing test target fails before tests execute.
 
 ## Milestones
 
