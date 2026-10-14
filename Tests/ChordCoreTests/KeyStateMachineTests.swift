@@ -77,6 +77,18 @@ private let testEdges = KeyStateMachine.Edges(left: 0, right: 500, top: 0, botto
     #expect(diagonal.advance(to: 0.32, rect: testRect, edges: testEdges).isEmpty)
 }
 
+@Test func opposingCarryDirectionsCancelUntilOneKeyIsReleased() {
+    var machine = KeyStateMachine()
+    #expect(machine.process(.down(.h, repeat: false, modifiers: shift), at: 0, rect: testRect, edges: testEdges)
+        == [.carry(dx: -10, dy: 0)])
+    #expect(machine.process(.down(.l, repeat: false, modifiers: shift), at: 0.01, rect: testRect, edges: testEdges).isEmpty)
+    #expect(machine.advance(to: 0.11, rect: testRect, edges: testEdges).isEmpty)
+    _ = machine.process(.up(.h, modifiers: shift), at: 0.12, rect: testRect, edges: testEdges)
+    #expect(machine.advance(to: 0.21, rect: testRect, edges: testEdges) == [.carry(dx: 30, dy: 0)])
+    _ = machine.process(.up(.l, modifiers: shift), at: 0.22, rect: testRect, edges: testEdges)
+    #expect(machine.advance(to: 0.32, rect: testRect, edges: testEdges).isEmpty)
+}
+
 @Test func reshapeUsesLogSpaceAndControlKeyMapping() {
     let machine = KeyStateMachine()
     let aspect = machine.reshapeDeltas(for: .l)

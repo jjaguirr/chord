@@ -93,7 +93,10 @@ public struct KeyStateMachine: Sendable {
             if modifiers.shift {
                 carryKeys.insert(key); carryTicks = 1
                 carryNextAt = time + Self.repeatInterval
-                return [carryIntent(vector: carryVector, ticks: 0, rect: rect, edges: edges)]
+                if let intent = carryIntent(vector: carryVector, ticks: 0, rect: rect, edges: edges) {
+                    return [intent]
+                }
+                return []
             }
             if let pending = pendingDirection, time - pending.at <= configuration.chordWindow,
                let combined = chord(pending.key, key) {
@@ -138,7 +141,9 @@ public struct KeyStateMachine: Sendable {
             if let vector = direction(pendingDirection.key) { result.append(.look(vector)) }
         }
         if !carryKeys.isEmpty, let next = carryNextAt, time >= next || time.nextUp >= next {
-            result.append(carryIntent(vector: carryVector, ticks: carryTicks, rect: rect, edges: edges))
+            if let intent = carryIntent(vector: carryVector, ticks: carryTicks, rect: rect, edges: edges) {
+                result.append(intent)
+            }
             carryTicks += 1
             carryNextAt = next + Self.repeatInterval
         }
@@ -179,7 +184,8 @@ public struct KeyStateMachine: Sendable {
             vector = PickDirection(x: vector.x + direction.x, y: vector.y + direction.y)
         }
     }
-    private func carryIntent(vector: PickDirection, ticks: Int, rect: PickerRect, edges: Edges) -> KeyIntent {
+    private func carryIntent(vector: PickDirection, ticks: Int, rect: PickerRect, edges: Edges) -> KeyIntent? {
+        guard vector.x != 0 || vector.y != 0 else { return nil }
         let delta = carry(vector: vector, ticks: ticks, rect: rect, edges: edges)
         return .carry(dx: delta.dx, dy: delta.dy)
     }
