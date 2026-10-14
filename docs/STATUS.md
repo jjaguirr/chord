@@ -50,10 +50,5 @@ plus Rectangle, we stop and write down why.
 | Socket latency | FAIL: AeroSpace server disabled; 100-request p95 not measured |
 | Mod+0 hold detector | Not run: controlled resting-finger trial absent |
 
-All seven spike harnesses and their thresholds/fail paths are in `spikes/`.
-`docs/C6-SUBSTRATE.md` recommends AeroSpace `v0.21.3-Beta` as a provisional,
-replaceable backend with its remaining validation gaps recorded. The installed
-AeroSpace is `0.20.3-Beta`; its server explicitly rejects commands while
-Accessibility/Input Monitoring permission checks succeeded where attempted;
-behavior trials remain unverified because disposable fixtures were absent.
-Vim-specific hotkey behavior is manual and unverified by the hotkey probe.
+Detailed substrate evidence and the provisional backend recommendation are in
+[C6-SUBSTRATE.md](C6-SUBSTRATE.md).

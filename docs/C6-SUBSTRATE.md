@@ -20,7 +20,8 @@ AeroSpace is lower-risk than a Chord-owned workspace model for the next mileston
 
 ## Required follow-up measurements
 
-All seven isolated probe harnesses are present and their thresholds/failure paths are listed in `spikes/README.md`. The socket probe was attempted and failed because the server was unavailable; no p95 samples were collected. Window IDs, AX frames/birth size, global hotkeys, Unfold/Spread throughput, and hold behavior were not run because their required substrate or controlled fixtures were unavailable. Vim-specific behavior remains manual and unverified by the probe. No system settings were changed.
+Per-probe results are tracked in [STATUS.md](STATUS.md); acceptance thresholds
+and failure paths are listed in [`spikes/README.md`](../spikes/README.md).
 
 Next trial: in a disposable macOS account, install and pin AeroSpace `v0.21.3-Beta`, configure empty AeroSpace key-binding tables, all windows floating via its new-window callback, and persistent workspaces; run all seven probes with the required fixtures/permissions already granted, and manually test Vim in Terminal/iTerm. Record OS/build, app versions, permissions, sample sizes, thresholds, p95 timings, and failures. If headless operation cannot be achieved with the documented configuration, or if IDs/frames/latency fail the documented thresholds, reopen the substrate choice; do not paper over it with implicit window-size policy.
 
