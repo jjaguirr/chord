@@ -113,10 +113,10 @@ public enum Picker {
             let ab = Int((ascore / 16).rounded(.down)), bb = Int((bscore / 16).rounded(.down))
             if ab != bb { return ab < bb }
             if (a.window.layer == origin.layer) != (b.window.layer == origin.layer) { return a.window.layer == origin.layer }
-            if a.window.mru != b.window.mru { return a.window.mru > b.window.mru }
             if a.perpendicular != b.perpendicular { return a.perpendicular < b.perpendicular }
             if straight == false && a.facingTie != b.facingTie { return a.facingTie < b.facingTie }
-            return a.window.id < b.window.id
+            if a.window.id != b.window.id { return a.window.id < b.window.id }
+            return a.window.mru > b.window.mru
         }
         return pool.sorted(by: ordered).first?.window.id
     }

@@ -49,10 +49,24 @@ struct PickerTests {
             }
         }
     }
-
+    @Test func reversibilityWinsOverMRUTies() {
+        let windows = [
+            PickerWindow(id: 0, rect: PickerRect(x: 0, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
+            PickerWindow(id: 1, rect: PickerRect(x: 120, y: 0, width: 100, height: 100), layer: 0, mru: 1, coverage: 0),
+            PickerWindow(id: 2, rect: PickerRect(x: -8, y: 0, width: 100, height: 100), layer: 0, mru: 10, coverage: 0),
+        ]
+        let right = Picker.pick(from: 0, direction: .l, windows: windows)
+        #expect(right == 1)
+        if let right {
+            #expect(Picker.pick(from: right, direction: .h, windows: windows) == 0)
+        }
+    }
     @Test func reachabilityOfEveryEligibleNeighbor() {
+        let windows = grid() + [
+            PickerWindow(id: 4, rect: PickerRect(x: -160, y: 0, width: 100, height: 100), layer: 0, mru: 4, coverage: 0),
+            PickerWindow(id: 5, rect: PickerRect(x: 0, y: -160, width: 100, height: 100), layer: 0, mru: 5, coverage: 0),
+        ]
         for direction in [PickDirection.h, .j, .k, .l] {
-            let windows = grid()
             let chosen = Picker.pick(from: 0, direction: direction, windows: windows)
             #expect(chosen != nil && chosen != 0)
         }
@@ -74,12 +88,12 @@ struct PickerTests {
     @Test func chordEqualsSequenceOnPlainGrid() {
         let windows = [
             PickerWindow(id: 0, rect: PickerRect(x: 0, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
-            PickerWindow(id: 1, rect: PickerRect(x: 160, y: 0, width: 100, height: 100), layer: 0, mru: 1, coverage: 0),
-            PickerWindow(id: 2, rect: PickerRect(x: 160, y: -160, width: 100, height: 100), layer: 0, mru: 2, coverage: 0),
+            PickerWindow(id: 1, rect: PickerRect(x: -160, y: 0, width: 100, height: 100), layer: 0, mru: 1, coverage: 0),
+            PickerWindow(id: 2, rect: PickerRect(x: -160, y: -160, width: 100, height: 100), layer: 0, mru: 2, coverage: 0),
         ]
-        let chord = Picker.pick(from: 0, direction: PickDirection(x: 1, y: -1), windows: windows)
-        let right = Picker.pick(from: 0, direction: .l, windows: windows)
-        let sequence = right.flatMap { Picker.pick(from: $0, direction: .k, windows: windows) }
+        let chord = Picker.pick(from: 0, direction: PickDirection(x: -1, y: -1), windows: windows)
+        let left = Picker.pick(from: 0, direction: .h, windows: windows)
+        let sequence = left.flatMap { Picker.pick(from: $0, direction: .k, windows: windows) }
         #expect(chord == 2)
         #expect(sequence == 2)
         #expect(chord == sequence)
