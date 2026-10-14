@@ -49,17 +49,23 @@ struct PickerTests {
             }
         }
     }
-    @Test func reversibilityWinsOverMRUTies() {
+    @Test func reversibilityRejectsNonReciprocalChoice() {
+        let windows = [
+            PickerWindow(id: 1, rect: PickerRect(x: 0, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
+            PickerWindow(id: 2, rect: PickerRect(x: 120, y: 0, width: 100, height: 100), layer: 0, mru: 1, coverage: 0),
+            PickerWindow(id: 0, rect: PickerRect(x: -10, y: 0, width: 100, height: 100), layer: 0, mru: 10, coverage: 0),
+        ]
+        #expect(Picker.pick(from: 1, direction: .l, windows: windows) == nil)
+        #expect(Picker.pick(from: 2, direction: .h, windows: windows) == 0)
+    }
+
+    @Test func mruPrecedesPerpendicularOffsetWithinScoreBucket() {
         let windows = [
             PickerWindow(id: 0, rect: PickerRect(x: 0, y: 0, width: 100, height: 100), layer: 0, mru: 0, coverage: 0),
             PickerWindow(id: 1, rect: PickerRect(x: 120, y: 0, width: 100, height: 100), layer: 0, mru: 1, coverage: 0),
-            PickerWindow(id: 2, rect: PickerRect(x: -8, y: 0, width: 100, height: 100), layer: 0, mru: 10, coverage: 0),
+            PickerWindow(id: 2, rect: PickerRect(x: 120, y: 16, width: 100, height: 100), layer: 0, mru: 2, coverage: 0),
         ]
-        let right = Picker.pick(from: 0, direction: .l, windows: windows)
-        #expect(right == 1)
-        if let right {
-            #expect(Picker.pick(from: right, direction: .h, windows: windows) == 0)
-        }
+        #expect(Picker.pick(from: 0, direction: .l, windows: windows) == 2)
     }
     @Test func reachabilityOfEveryEligibleNeighbor() {
         let windows = grid() + [

@@ -68,6 +68,11 @@ public enum Picker {
     /// Returns nil for a reserved cancel chord or when no directional target exists.
     public static func pick(from originID: Int, direction: PickDirection,
                             windows: [PickerWindow]) -> Int? {
+        choose(from: originID, direction: direction, windows: windows, requireReciprocal: true)
+    }
+
+    private static func choose(from originID: Int, direction: PickDirection,
+                               windows: [PickerWindow], requireReciprocal: Bool) -> Int? {
         guard direction.x != 0 || direction.y != 0,
               let originIndex = windows.firstIndex(where: { $0.id == originID }) else { return nil }
         let snappedWindows = windows.map { window in
@@ -102,7 +107,12 @@ public enum Picker {
             candidates.append(Candidate(window: w, along: along, perpendicular: perpendicular,
                                         gap: gap, overlap: overlapRatio, facingTie: facing))
         }
-        guard !candidates.isEmpty else { return zFallback(origin: origin, direction: direction, windows: normalized) }
+        guard !candidates.isEmpty else {
+            let target = zFallback(origin: origin, direction: direction, windows: normalized)
+            guard requireReciprocal, let target else { return target }
+            return choose(from: target, direction: direction.opposite,
+                          windows: windows, requireReciprocal: false) == originID ? target : nil
+        }
 
         let straight = direction.x == 0 || direction.y == 0
         let beam = straight ? candidates.filter { $0.overlap >= 0.25 } : []
@@ -112,13 +122,17 @@ public enum Picker {
             let bscore = beam.isEmpty ? b.along + 2 * b.perpendicular : b.gap
             let ab = Int((ascore / 16).rounded(.down)), bb = Int((bscore / 16).rounded(.down))
             if ab != bb { return ab < bb }
-            if (a.window.layer == origin.layer) != (b.window.layer == origin.layer) { return a.window.layer == origin.layer }
+            if a.window.mru != b.window.mru { return a.window.mru > b.window.mru }
             if a.perpendicular != b.perpendicular { return a.perpendicular < b.perpendicular }
             if straight == false && a.facingTie != b.facingTie { return a.facingTie < b.facingTie }
-            if a.window.id != b.window.id { return a.window.id < b.window.id }
-            return a.window.mru > b.window.mru
+            return a.window.id < b.window.id
         }
-        return pool.sorted(by: ordered).first?.window.id
+        let ranked = pool.sorted(by: ordered)
+        guard requireReciprocal else { return ranked.first?.window.id }
+        return ranked.first { candidate in
+            choose(from: candidate.window.id, direction: direction.opposite,
+                   windows: windows, requireReciprocal: false) == originID
+        }?.window.id
     }
 
     private static func zFallback(origin: PickerWindow, direction: PickDirection,
