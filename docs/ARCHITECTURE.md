@@ -14,7 +14,7 @@ behavior is not yet validated. Chord reads window geometry itself. See the
 | Module | Pure? | Job |
 |---|---|---|
 | InputLayer | no | Registered Carbon hotkeys; CGEventTap fallback |
-| KeyStateMachine | yes | Tap/hold, chords, held-key repeat |
+| KeyStateMachine | yes | Timestamped tap/hold, directional chords, carry ramp, reshape intents |
 | Picker | yes | Rects + direction vector → target window |
 | Unfold | yes | Pure `frame()` geometry |
 | Spread | no | View mode with remembered frames |

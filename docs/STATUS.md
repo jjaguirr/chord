@@ -8,7 +8,7 @@ They are estimates, not promises.
 | Piece | State |
 |---|---|
 | `hjkl` aim/chord prototype | Built (single HTML file, browser only) |
-| Swift package core | Built: `ChordCore` has pure `frame()`, `Picker`, and Plan types; executable remains startup-only; frame, Picker, and Plan tests added |
+| Swift package core | Built: `ChordCore` has pure `frame()`, Picker, Plan types, and a timestamp-driven KeyStateMachine (tap/hold, chords, carry, and reshape intents); tests cover core behavior. Executable remains startup-only; no UI, window operations, hotkeys, or backend are implemented |
 | Unfold animation | Pure `frame()` math and tests built; animator not coded |
 | Everything else | Design only |
 
@@ -17,9 +17,11 @@ They are estimates, not promises.
 With Swift 6.0 or newer, `swift build` builds the package and `swift run Chord`
 prints `Chord: bootstrap only; window management is not implemented.` then exits.
 `swift build --build-tests` compiles the test target. Tests cover frame
-behavior, generated landmarks, Picker rules and properties, and Plan
-validation, decoding, fallback, and action reversibility; no UI, window
-operations, hotkeys, or backend are implemented.
+behavior, generated landmarks, Picker rules and properties, Plan
+validation, decoding, fallback, and action reversibility, plus KeyStateMachine
+event sequences for tap/hold, direction chords, carry repeats and edge
+snapping, and reshape intents. No UI, window operations, hotkeys, or backend
+are implemented.
 
 `swift build` succeeds. `swift test` is currently blocked because this machine's Swift installation cannot load the `TestingMacros` plugin; the existing test target fails before tests execute.
 Picker supports came-from preference on exact primary-score ties; pathological layouts may remain non-reciprocal under the required tie order. Diagonal tie-breaking uses explicit pure screen bounds; horizontal z-fallback is a no-op when no spatial target exists.
