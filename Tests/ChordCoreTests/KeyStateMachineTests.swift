@@ -41,6 +41,16 @@ private let testEdges = KeyStateMachine.Edges(left: 0, right: 500, top: 0, botto
         == [.look(PickDirection(x: -1, y: 1))])
 }
 
+@Test func oppositeDirectionChordsCancelWithoutLookIntents() {
+    for (first, second) in [(ChordKey.h, ChordKey.l), (.k, .j)] {
+        var machine = KeyStateMachine()
+        #expect(machine.process(.down(first, repeat: false, modifiers: plain), at: 0, rect: testRect, edges: testEdges).isEmpty)
+        #expect(machine.process(.down(second, repeat: false, modifiers: plain), at: 0.02, rect: testRect, edges: testEdges).isEmpty)
+        #expect(machine.process(.up(first, modifiers: plain), at: 0.03, rect: testRect, edges: testEdges).isEmpty)
+        #expect(machine.process(.up(second, modifiers: plain), at: 0.04, rect: testRect, edges: testEdges).isEmpty)
+    }
+}
+
 @Test func delayedDirectionsAndRestingFingerDoNotInventChords() {
     var machine = KeyStateMachine()
     _ = machine.process(.down(.h, repeat: false, modifiers: plain), at: 0, rect: testRect, edges: testEdges)

@@ -31,27 +31,23 @@ public enum KeyIntent: Equatable, Sendable {
 public struct KeyStateMachine: Sendable {
     public struct Configuration: Equatable, Sendable {
         public var holdThreshold: Double
-        public var tapThreshold: Double
         public var chordWindow: Double
         public var repeatStages: [Double]
-        public var repeatInterval: Double
         public var magnetDistance: Double
-        public var reshapeStep: Double
         public init(
-            holdThreshold: Double = 0.7, tapThreshold: Double = 0.25,
-            chordWindow: Double = 0.035, repeatStages: [Double] = [10, 20, 30],
-            repeatInterval: Double = 0.1, magnetDistance: Double = 30,
-            reshapeStep: Double = 0.05
+            holdThreshold: Double = 0.7, chordWindow: Double = 0.035,
+            repeatStages: [Double] = [10, 20, 30], magnetDistance: Double = 30
         ) {
             self.holdThreshold = holdThreshold
-            self.tapThreshold = tapThreshold
             self.chordWindow = chordWindow
             self.repeatStages = repeatStages
-            self.repeatInterval = repeatInterval
             self.magnetDistance = magnetDistance
-            self.reshapeStep = reshapeStep
         }
     }
+
+    private static let tapThreshold = 0.25
+    private static let repeatInterval = 0.1
+    private static let reshapeStep = 0.05
 
     public struct Edges: Equatable, Sendable {
         public let left: Double
@@ -62,6 +58,7 @@ public struct KeyStateMachine: Sendable {
             self.left = left; self.right = right; self.top = top; self.bottom = bottom
         }
     }
+
 
     public let configuration: Configuration
     private var downKeys: Set<ChordKey> = []
@@ -95,12 +92,13 @@ public struct KeyStateMachine: Sendable {
             }
             if modifiers.shift {
                 carryKeys.insert(key); carryTicks = 1
-                carryNextAt = time + configuration.repeatInterval
+                carryNextAt = time + Self.repeatInterval
                 return [carryIntent(vector: carryVector, ticks: 0, rect: rect, edges: edges)]
             }
             if let pending = pendingDirection, time - pending.at <= configuration.chordWindow,
                let combined = chord(pending.key, key) {
                 pendingDirection = nil
+                if combined.x == 0 && combined.y == 0 { return [] }
                 return [.look(combined)]
             }
             var result: [KeyIntent] = []
@@ -117,7 +115,7 @@ public struct KeyStateMachine: Sendable {
                     spreadStarted = true
                     return [.spread]
                 }
-                return !spreadStarted && time - started <= configuration.tapThreshold ? [.unfold] : []
+                return !spreadStarted && time - started <= Self.tapThreshold ? [.unfold] : []
             }
             if carryKeys.remove(key) != nil, carryKeys.isEmpty { carryNextAt = nil }
             if let pendingDirection, pendingDirection.key == key {
@@ -142,7 +140,7 @@ public struct KeyStateMachine: Sendable {
         if !carryKeys.isEmpty, let next = carryNextAt, time >= next || time.nextUp >= next {
             result.append(carryIntent(vector: carryVector, ticks: carryTicks, rect: rect, edges: edges))
             carryTicks += 1
-            carryNextAt = next + configuration.repeatInterval
+            carryNextAt = next + Self.repeatInterval
         }
         return result
     }
@@ -163,10 +161,10 @@ public struct KeyStateMachine: Sendable {
     /// Deltas are applied to log(width/height) and log(width*height), respectively.
     public func reshapeDeltas(for key: ChordKey) -> (aspect: Double, area: Double) {
         switch key {
-        case .h: (-configuration.reshapeStep, 0)
-        case .l: (configuration.reshapeStep, 0)
-        case .j: (0, configuration.reshapeStep)
-        case .k: (0, -configuration.reshapeStep)
+        case .h: (-Self.reshapeStep, 0)
+        case .l: (Self.reshapeStep, 0)
+        case .j: (0, Self.reshapeStep)
+        case .k: (0, -Self.reshapeStep)
         default: (0, 0)
         }
     }
