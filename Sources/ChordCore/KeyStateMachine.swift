@@ -139,7 +139,7 @@ public struct KeyStateMachine: Sendable {
             self.pendingDirection = nil
             if let vector = direction(pendingDirection.key) { result.append(.look(vector)) }
         }
-        if !carryKeys.isEmpty, let next = carryNextAt, time >= next {
+        if !carryKeys.isEmpty, let next = carryNextAt, time >= next || time.nextUp >= next {
             result.append(carryIntent(vector: carryVector, ticks: carryTicks, rect: rect, edges: edges))
             carryTicks += 1
             carryNextAt = next + configuration.repeatInterval
