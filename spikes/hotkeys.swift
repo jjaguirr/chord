@@ -5,10 +5,36 @@ import Carbon
 import Foundation
 
 let option0 = Int64(kVK_ANSI_0)
-let ctrlKeys: Set<Int64> = [Int64(kVK_ANSI_H), Int64(kVK_ANSI_J), Int64(kVK_ANSI_K), Int64(kVK_ANSI_L)]
+struct CtrlTrial {
+    let context: String
+    let key: String
+    let code: Int64
+    let bundleIDs: Set<String>
+}
+let terminalBundle = "com.apple.Terminal"
+let iTermBundle = "com.googlecode.iterm2"
+let ctrlTrials = [
+    CtrlTrial(context: "Terminal", key: "h", code: Int64(kVK_ANSI_H), bundleIDs: [terminalBundle]),
+    CtrlTrial(context: "Terminal", key: "j", code: Int64(kVK_ANSI_J), bundleIDs: [terminalBundle]),
+    CtrlTrial(context: "Terminal", key: "k", code: Int64(kVK_ANSI_K), bundleIDs: [terminalBundle]),
+    CtrlTrial(context: "Terminal", key: "l", code: Int64(kVK_ANSI_L), bundleIDs: [terminalBundle]),
+    CtrlTrial(context: "iTerm", key: "h", code: Int64(kVK_ANSI_H), bundleIDs: [iTermBundle]),
+    CtrlTrial(context: "iTerm", key: "j", code: Int64(kVK_ANSI_J), bundleIDs: [iTermBundle]),
+    CtrlTrial(context: "iTerm", key: "k", code: Int64(kVK_ANSI_K), bundleIDs: [iTermBundle]),
+    CtrlTrial(context: "iTerm", key: "l", code: Int64(kVK_ANSI_L), bundleIDs: [iTermBundle]),
+    CtrlTrial(context: "Vim in Terminal", key: "h", code: Int64(kVK_ANSI_H), bundleIDs: [terminalBundle]),
+    CtrlTrial(context: "Vim in Terminal", key: "j", code: Int64(kVK_ANSI_J), bundleIDs: [terminalBundle]),
+    CtrlTrial(context: "Vim in Terminal", key: "k", code: Int64(kVK_ANSI_K), bundleIDs: [terminalBundle]),
+    CtrlTrial(context: "Vim in Terminal", key: "l", code: Int64(kVK_ANSI_L), bundleIDs: [terminalBundle]),
+    CtrlTrial(context: "Vim in iTerm", key: "h", code: Int64(kVK_ANSI_H), bundleIDs: [iTermBundle]),
+    CtrlTrial(context: "Vim in iTerm", key: "j", code: Int64(kVK_ANSI_J), bundleIDs: [iTermBundle]),
+    CtrlTrial(context: "Vim in iTerm", key: "k", code: Int64(kVK_ANSI_K), bundleIDs: [iTermBundle]),
+    CtrlTrial(context: "Vim in iTerm", key: "l", code: Int64(kVK_ANSI_L), bundleIDs: [iTermBundle])
+]
+var currentCtrlTrial: CtrlTrial?
+var ctrlTrialHit = false
 var carbonCount = 0
 var optionCount = 0
-var ctrlCount = 0
 var registration: EventHotKeyRef?
 var finished = false
 var carbonMode = false
@@ -32,17 +58,31 @@ guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEve
     let code = event.getIntegerValueField(.keyboardEventKeycode)
     if code == option0 && event.flags.contains(.maskAlternate) {
         optionCount += 1
-        if !carbonMode { return nil } // Consume Option+0 before its alternate character is inserted.
+        if !carbonMode { return nil }
     }
-    if ctrlKeys.contains(code) && event.flags.contains(.maskControl) { ctrlCount += 1 }
+    if let trial = currentCtrlTrial,
+       code == trial.code,
+       event.flags.contains(.maskControl),
+       trial.bundleIDs.contains(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "") {
+        ctrlTrialHit = true
+    }
     return Unmanaged.passUnretained(event)
 }, userInfo: nil) else { fail("CGEventTap unavailable", "grant Input Monitoring and rerun; check system tap restrictions") }
 let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
 CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
 CGEvent.tapEnable(tap: tap, enable: true)
 let label = carbonMode ? "Carbon" : "CGEventTap fallback"
-print("\(label): test Option+0 once, then Ctrl+h/j/k/l in Terminal, iTerm, and Vim; verify no alternate character appears in a text field. Press Return here when finished.")
+print("\(label): test Option+0 once in a text field; then complete each prompted Ctrl trial. Press Return after each trial.")
 DispatchQueue.global().async { _ = readLine(); finished = true }
 while !finished { _ = CFRunLoopRunInMode(.defaultMode, 0.05, true) }
-guard optionCount >= 1, ctrlCount >= 12, !carbonMode || carbonCount >= 1 else { fail("\(label) missed required events; Option+0 \(optionCount), Carbon callback \(carbonCount), Ctrl+hjkl \(ctrlCount)", "retry both modes and all four physical Ctrl keys in three terminal environments") }
-print("PASS: \(label) captured Option+0 before insertion and Ctrl+hjkl \(ctrlCount) times; threshold Option+0 >=1, Ctrl >=12; verify text-field leakage manually")
+guard optionCount >= 1, !carbonMode || carbonCount >= 1 else { fail("\(label) missed Option+0; Option+0 \(optionCount), Carbon callback \(carbonCount)", "retry both modes and verify Option+0 is captured before insertion") }
+for trial in ctrlTrials {
+    currentCtrlTrial = trial
+    ctrlTrialHit = false
+    print("Test Ctrl+\(trial.key) in \(trial.context), then press Return here.")
+    finished = false
+    DispatchQueue.global().async { _ = readLine(); finished = true }
+    while !finished { _ = CFRunLoopRunInMode(.defaultMode, 0.05, true) }
+    guard ctrlTrialHit else { fail("\(label) missed Ctrl+\(trial.key) in \(trial.context)", "retry this physical key in the named environment; complete every prompted trial") }
+}
+print("PASS: \(label) captured Option+0 and every physical Ctrl+h/j/k/l trial in Terminal, iTerm, and Vim; verify text-field leakage manually")
