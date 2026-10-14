@@ -74,4 +74,4 @@ Bootstrap step 1 is complete; see [STATUS.md](docs/STATUS.md) for current progre
 
 ## License
 
-TBD. AeroSpace (MIT) is used as a headless substrate.
+TBD. AeroSpace (MIT) is the provisional backend recommendation; see the [C6 substrate report](docs/C6-SUBSTRATE.md).

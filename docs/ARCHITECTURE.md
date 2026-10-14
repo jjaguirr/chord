@@ -3,10 +3,11 @@
 **One rule:** everything that decides is pure; everything that acts goes
 through the Executor.
 
-**Substrate:** AeroSpace, run headless (pinned version), over its
-documented Unix socket. No key bindings, a rule that floats every window,
-persistent workspaces. Chord reads window geometry itself. The backend
-sits behind a protocol so it can be replaced.
+**Provisional substrate:** AeroSpace, evaluated as a replaceable backend over
+its documented Unix socket. The intended configuration disables AeroSpace key
+bindings, floats every window, and uses persistent workspaces; operational
+behavior is not yet validated. Chord reads window geometry itself. See the
+[C6 substrate report](C6-SUBSTRATE.md) for evidence and remaining gaps.
 
 ## Modules
 

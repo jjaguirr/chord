@@ -40,5 +40,15 @@ plus Rectangle, we stop and write down why.
 
 ## Unverified
 
-Spikes 1-5 (window IDs, frame survival, hotkeys, birth size, Unfold fps)
-plus socket latency. Each has a defined fail path.
+| C6 spike | Result |
+|---|---|
+| Window IDs across apps | Not run: AeroSpace server disabled; no multi-app sample |
+| AX frame survival | Not run: no disposable app/window fixture |
+| Global hotkeys | Not run: Terminal/iTerm/Vim fixtures absent; Vim-specific behavior is manual and unverified by the probe |
+| Window birth size | Not run: no fresh-window fixture |
+| Unfold frame rate / 20-window Spread | Not run: 20-window fixture absent |
+| Socket latency | FAIL: AeroSpace server disabled; 100-request p95 not measured |
+| Mod+0 hold detector | Not run: controlled resting-finger trial absent |
+
+Detailed substrate evidence and the provisional backend recommendation are in
+[C6-SUBSTRATE.md](C6-SUBSTRATE.md).
