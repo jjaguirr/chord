@@ -35,9 +35,9 @@ WINDOW_MUTATION = re.compile(
     r"|AXUIElementSetAttributeValue|AXRaiseAction|makeKeyAndOrderFront|orderFront"
     r"|raise|moveTo|move|resize)\s*\("
     r"|\bAXUIElementPerformAction\s*\([^)]*\bkAXRaiseAction\b"
-    r"|\b(?:\w+\.)+frame(?:\.\w+)*\s*(?:(?:[+\-*/%&|^~]+|<<|>>)=|(?<![=!<>])=(?!=|>))"
-    r"|\bframe\.\w+(?:\.\w+)*\s*(?:(?:[+\-*/%&|^~]+|<<|>>)=|(?<![=!<>])=(?!=|>))"
-    r"|&\s*(?:\w+\.)*frame\b"
+    r"|\b(?:\w+\??\.)+frame(?:\.\w+|\?\.\w+)*\s*(?:(?:[+\-*/%&|^~]+|<<|>>)=|(?<![=!<>])=(?!=|>))"
+    r"|\bframe(?:\.\w+|\?\.\w+)+\s*(?:(?:[+\-*/%&|^~]+|<<|>>)=|(?<![=!<>])=(?!=|>))"
+    r"|&\s*(?:\w+\??\.)*frame\b"
 )
 
 SOCKET_CLIENT = re.compile(

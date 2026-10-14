@@ -87,6 +87,11 @@ class InvariantChecks(unittest.TestCase):
     def test_nested_frame_property_assignment_outside_executor_fails(self):
         self.write("Sources/Chord/Animator.swift", "func step(window: W) { window.frame.origin.x = 1 }\n")
         self.assertFlagged("b-window-mutation", "frame")
+    def test_optional_chained_frame_mutations_outside_executor_fail(self):
+        self.write("Sources/Chord/Animator.swift", "func step(window: W) { window?.frame = rect }\n")
+        self.assertFlagged("b-window-mutation", "frame")
+        self.write("Sources/Chord/Animator.swift", "func step(window: W) { update(&window?.frame) }\n")
+        self.assertFlagged("b-window-mutation", "frame")
     def test_nested_frame_compound_assignment_outside_executor_fails(self):
         self.write("Sources/Chord/Animator.swift", "func step(window: W) { window.frame.origin.x -= 1 }\n")
         self.assertFlagged("b-window-mutation", "frame")
