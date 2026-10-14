@@ -35,8 +35,8 @@ WINDOW_MUTATION = re.compile(
     r"|AXUIElementSetAttributeValue|AXRaiseAction|makeKeyAndOrderFront|orderFront"
     r"|raise|moveTo|move|resize)\s*\("
     r"|\bkAX(?:Position|Size|Raise|Main)\w*"
-    r"|\b(?:\w+\.)+frame(?:\.\w+)*\s*=(?!=|>)"
-    r"|\bframe\.\w+(?:\.\w+)*\s*=(?!=|>)"
+    r"|\b(?:\w+\.)+frame(?:\.\w+)*\s*(?:(?:[+\-*/%&|^~]+|<<|>>)=|(?<![=!<>])=(?!=|>))"
+    r"|\bframe\.\w+(?:\.\w+)*\s*(?:(?:[+\-*/%&|^~]+|<<|>>)=|(?<![=!<>])=(?!=|>))"
     r"|&\s*(?:\w+\.)*frame\b"
 )
 
