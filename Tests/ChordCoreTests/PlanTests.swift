@@ -129,11 +129,21 @@ struct PlanTests {
         #expect(actions.count == 2)
 
         var model = before
-        for action in actions { action.apply(to: &model) }
+        for action in actions { #expect(action.apply(to: &model)) }
         #expect(model != before)
 
-        for action in actions.reversed() { action.inverse.apply(to: &model) }
+        for action in actions.reversed() { #expect(action.inverse.apply(to: &model)) }
         #expect(model == before)
+    }
+
+    @Test func staleActionDoesNotChangeModel() {
+        let action = Action.place(windowID: 1, from: .bench, to: .workspace(.two))
+        var model: [Int: Place] = [1: .workspace(.three)]
+
+        #expect(!action.apply(to: &model))
+        #expect(model == [1: .workspace(.three)])
+        #expect(!action.inverse.apply(to: &model))
+        #expect(model == [1: .workspace(.three)])
     }
 
     @Test func inverseOfInverseIsOriginal() {

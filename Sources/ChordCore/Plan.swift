@@ -128,11 +128,14 @@ public enum Action: Equatable, Sendable {
         }
     }
 
-    /// Updates the place model. Applying `inverse` after `self` restores the prior model.
-    public func apply(to model: inout [Int: Place]) {
+    /// Updates the place model only when it matches the action's recorded source.
+    @discardableResult
+    public func apply(to model: inout [Int: Place]) -> Bool {
         switch self {
-        case .place(let windowID, _, let to):
+        case .place(let windowID, let from, let to):
+            guard model[windowID] == from else { return false }
             model[windowID] = to
+            return true
         }
     }
 }
