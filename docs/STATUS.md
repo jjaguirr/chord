@@ -1,13 +1,13 @@
 # STATUS.md
 
-Bootstrap steps 1-3 are built: a dependency-free Swift package with pure frame
-math and its tests, not a functioning window manager. Estimates below assume
-~10 focused hours a week. They are estimates, not promises.
+Bootstrap steps 1-4 are built: a dependency-free Swift package with pure frame
+math, the Picker, and their tests, not a functioning window manager. Estimates
+below assume ~10 focused hours a week. They are estimates, not promises.
 
 | Piece | State |
 |---|---|
 | `hjkl` aim/chord prototype | Built (single HTML file, browser only) |
-| Swift package skeleton | Built: pure `ChordCore` has `frame()`; executable remains startup-only; frame tests added |
+| Swift package core | Built: `ChordCore` has pure `frame()` and `Picker`; executable remains startup-only; frame and Picker tests added |
 | Unfold animation | Pure `frame()` math and tests built; animator not coded |
 | Everything else | Design only |
 
@@ -15,12 +15,10 @@ math and its tests, not a functioning window manager. Estimates below assume
 
 With Swift 6.0 or newer, `swift build` builds the package and `swift run Chord`
 prints `Chord: bootstrap only; window management is not implemented.` then exits.
-`swift build --build-tests` compiles the frame test target.
-The tests cover frame stops, interpolation, boundaries, and generated landmarks;
-no UI, window operations, hotkeys, or backend are implemented.
+`swift build --build-tests` compiles the test target. Tests cover frame
+behavior, generated landmarks, and Picker rules and properties; no UI, window
+operations, hotkeys, or backend are implemented.
 
-Bootstrap step 4 now includes a pure `Picker` and deterministic property and rule tests.
-Picker inputs carry geometry, layer, MRU, coverage, workspace/minimized, and stack metadata; the core has no window or OS dependencies.
 `swift build` succeeds. `swift test` is currently blocked because this machine's Swift installation cannot load the `TestingMacros` plugin; the existing test target fails before tests execute.
 Picker supports came-from preference on exact primary-score ties; pathological layouts may remain non-reciprocal under the required tie order. Diagonal tie-breaking uses explicit pure screen bounds; horizontal z-fallback is a no-op when no spatial target exists.
 
