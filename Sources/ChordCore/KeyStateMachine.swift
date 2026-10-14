@@ -68,13 +68,15 @@ public struct KeyStateMachine: Sendable {
     private var chargeStarted: Double?
     private var spreadStarted = false
     private var pendingDirection: (key: ChordKey, at: Double)?
-    private var carryKey: ChordKey?
+    private var carryKeys: Set<ChordKey> = []
     private var carryNextAt: Double?
     private var carryTicks = 0
 
     public init(configuration: Configuration = Configuration()) { self.configuration = configuration }
 
-    public mutating func process(_ input: KeyInput, at time: Double) -> [KeyIntent] {
+    public mutating func process(
+        _ input: KeyInput, at time: Double, rect: PickerRect, edges: Edges
+    ) -> [KeyIntent] {
         switch input {
         case let .down(key, isRepeat, modifiers):
             guard !isRepeat, downKeys.insert(key).inserted else { return [] }
@@ -86,15 +88,15 @@ public struct KeyStateMachine: Sendable {
                 chargeStarted = nil; spreadStarted = false
                 return [.abortCharge]
             }
-            guard let vector = direction(key) else { return [] }
+            guard direction(key) != nil else { return [] }
             if modifiers.control {
                 let (aspect, area) = reshapeDeltas(for: key)
                 return [.reshape(aspectDelta: aspect, areaDelta: area)]
             }
             if modifiers.shift {
-                carryKey = key; carryTicks = 1
+                carryKeys.insert(key); carryTicks = 1
                 carryNextAt = time + configuration.repeatInterval
-                return [carryIntent(vector: vector, ticks: 0)]
+                return [carryIntent(vector: carryVector, ticks: 0, rect: rect, edges: edges)]
             }
             if let pending = pendingDirection, time - pending.at <= configuration.chordWindow,
                let combined = chord(pending.key, key) {
@@ -107,14 +109,17 @@ public struct KeyStateMachine: Sendable {
             }
             pendingDirection = (key, time)
             return result
-
         case let .up(key, _):
             guard downKeys.remove(key) != nil else { return [] }
             if key == .zero, let started = chargeStarted {
                 chargeStarted = nil
+                if !spreadStarted && time - started >= configuration.holdThreshold {
+                    spreadStarted = true
+                    return [.spread]
+                }
                 return !spreadStarted && time - started <= configuration.tapThreshold ? [.unfold] : []
             }
-            if carryKey == key { carryKey = nil; carryNextAt = nil }
+            if carryKeys.remove(key) != nil, carryKeys.isEmpty { carryNextAt = nil }
             if let pendingDirection, pendingDirection.key == key {
                 self.pendingDirection = nil
                 if let vector = direction(key) { return [.look(vector)] }
@@ -123,7 +128,7 @@ public struct KeyStateMachine: Sendable {
         }
     }
 
-    public mutating func advance(to time: Double) -> [KeyIntent] {
+    public mutating func advance(to time: Double, rect: PickerRect, edges: Edges) -> [KeyIntent] {
         var result: [KeyIntent] = []
         if let started = chargeStarted, !spreadStarted,
            time - started >= configuration.holdThreshold {
@@ -134,9 +139,8 @@ public struct KeyStateMachine: Sendable {
             self.pendingDirection = nil
             if let vector = direction(pendingDirection.key) { result.append(.look(vector)) }
         }
-        if let key = carryKey, downKeys.contains(key), let next = carryNextAt,
-           time >= next, let vector = direction(key) {
-            result.append(carryIntent(vector: vector, ticks: carryTicks))
+        if !carryKeys.isEmpty, let next = carryNextAt, time >= next {
+            result.append(carryIntent(vector: carryVector, ticks: carryTicks, rect: rect, edges: edges))
             carryTicks += 1
             carryNextAt = next + configuration.repeatInterval
         }
@@ -145,16 +149,14 @@ public struct KeyStateMachine: Sendable {
 
     /// Edge magnets snap each directed axis independently, leaving the other axis
     /// unchanged. `ticks` selects the configured 10/20/30 (then capped) ramp.
-    public func carry(vector: PickDirection, ticks: Int, rect: PickerRect, edges: Edges? = nil) -> (dx: Double, dy: Double) {
+    public func carry(vector: PickDirection, ticks: Int, rect: PickerRect, edges: Edges) -> (dx: Double, dy: Double) {
         let distance = stageDistance(ticks)
         var dx = Double(vector.x) * distance
         var dy = Double(vector.y) * distance
-        if let edges {
-            if vector.x < 0 && abs(rect.x - edges.left) <= configuration.magnetDistance { dx = edges.left - rect.x }
-            if vector.x > 0 && abs(edges.right - rect.x - rect.width) <= configuration.magnetDistance { dx = edges.right - rect.x - rect.width }
-            if vector.y < 0 && abs(rect.y - edges.top) <= configuration.magnetDistance { dy = edges.top - rect.y }
-            if vector.y > 0 && abs(edges.bottom - rect.y - rect.height) <= configuration.magnetDistance { dy = edges.bottom - rect.y - rect.height }
-        }
+        if vector.x < 0 && abs(rect.x - edges.left) <= configuration.magnetDistance { dx = edges.left - rect.x }
+        if vector.x > 0 && abs(edges.right - rect.x - rect.width) <= configuration.magnetDistance { dx = edges.right - rect.x - rect.width }
+        if vector.y < 0 && abs(rect.y - edges.top) <= configuration.magnetDistance { dy = edges.top - rect.y }
+        if vector.y > 0 && abs(edges.bottom - rect.y - rect.height) <= configuration.magnetDistance { dy = edges.bottom - rect.y - rect.height }
         return (dx, dy)
     }
 
@@ -173,9 +175,15 @@ public struct KeyStateMachine: Sendable {
         guard !configuration.repeatStages.isEmpty else { return 0 }
         return configuration.repeatStages[max(0, min(ticks, configuration.repeatStages.count - 1))]
     }
-    private func carryIntent(vector: PickDirection, ticks: Int) -> KeyIntent {
-        let distance = stageDistance(ticks)
-        return .carry(dx: Double(vector.x) * distance, dy: Double(vector.y) * distance)
+    private var carryVector: PickDirection {
+        carryKeys.reduce(into: PickDirection(x: 0, y: 0)) { vector, key in
+            guard let direction = direction(key) else { return }
+            vector = PickDirection(x: vector.x + direction.x, y: vector.y + direction.y)
+        }
+    }
+    private func carryIntent(vector: PickDirection, ticks: Int, rect: PickerRect, edges: Edges) -> KeyIntent {
+        let delta = carry(vector: vector, ticks: ticks, rect: rect, edges: edges)
+        return .carry(dx: delta.dx, dy: delta.dy)
     }
     private func direction(_ key: ChordKey) -> PickDirection? {
         switch key { case .h: .h; case .j: .j; case .k: .k; case .l: .l; default: nil }
