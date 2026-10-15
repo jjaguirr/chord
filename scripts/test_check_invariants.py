@@ -197,6 +197,52 @@ class InvariantChecks(unittest.TestCase):
         self.write("Sources/Chord/Doc.swift", "// do not import spikes\n")
         self.assertClean()
 
+    def test_forbidden_calls_in_strings_and_nested_comments_are_ignored(self):
+        self.write(
+            "Sources/Chord/Doc.swift",
+            'let a = "window.setFrame(rect); socket(AF_UNIX)"; '
+            'let b = #"raise(); import Foundation"#\n'
+            '/* outer /* window.frame = rect */ still a comment */\n',
+        )
+        self.assertClean()
+
+    def test_multiline_string_call_text_is_ignored(self):
+        self.write(
+            "Sources/Chord/Doc.swift",
+            'let text = """\nwindow.setFrame(rect)\nAeroSpaceSocket()\n"""\n',
+        )
+        self.assertClean()
+
+    def test_interpolated_code_is_still_scanned(self):
+        self.write(
+            "Sources/Chord/Animator.swift",
+            'let text = "frame: \\(window.setFrame(rect))"\n',
+        )
+        self.assertFlagged("b-window-mutation", "setFrame")
+
+    def test_raw_string_spike_target_path_fails(self):
+        self.write(
+            "Package.swift",
+            'import PackageDescription\n'
+            'let package = Package(name: "Chord", targets: [.target(name: "P", path: #"/spikes/probe"#)])\n',
+        )
+        self.assertFlagged("d-spikes-isolation", "Package.swift")
+
+    def test_multiline_spike_target_path_fails(self):
+        self.write(
+            "Package.swift",
+            'import PackageDescription\n'
+            'let package = Package(name: "Chord", targets: [.target(name: "P", path: """\nspikes\n""")])\n',
+        )
+        self.assertFlagged("d-spikes-isolation", "Package.swift")
+
+    def test_property_style_frame_compound_mutation_fails(self):
+        self.write(
+            "Sources/Chord/Animator.swift",
+            "func step(window: W) { window?.frame.origin.x *= 2 }\n",
+        )
+        self.assertFlagged("b-window-mutation", "frame")
+
 
 
 if __name__ == "__main__":
