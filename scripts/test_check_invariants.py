@@ -270,6 +270,21 @@ class InvariantChecks(unittest.TestCase):
             'let package = Package(name: "Chord", targets: [.target(name: "P", path: "sp" + "ikes/probe")])\n',
         )
         self.assertFlagged("d-spikes-isolation", "Package.swift")
+    def test_interpolated_spike_target_path_fails(self):
+        self.write(
+            "Package.swift",
+            'import PackageDescription\n'
+            'let package = Package(name: "Chord", targets: [.target(name: "P", path: "sp\\("ikes")/probe")])\n',
+        )
+        self.assertFlagged("d-spikes-isolation", "Package.swift")
+
+    def test_escaped_window_mutation_identifiers_fail(self):
+        self.write(
+            "Sources/Chord/Animator.swift",
+            "func step(w: W) { w.`setFrame`(rect); w.`frame` = rect }\n",
+        )
+        hits = [v for v in self.violations() if v.startswith("[b-window-mutation]")]
+        self.assertEqual(len(hits), 2, f"expected escaped setter and property violations, got {hits}")
 
     def test_import_violations_report_import_line(self):
         self.write("Sources/ChordCore/Leak.swift", "\n\nimport Foundation\n")

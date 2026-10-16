@@ -63,8 +63,10 @@ class SwiftScanner:
                 next_index = self.index + len(escape)
                 if self.text.startswith("(", next_index):
                     self.emit("string", "".join(content), line)
+                    self.emit("interpolation-start", "", self.line)
                     self.index = next_index + 1
                     self.scan_code(interpolation=True)
+                    self.emit("interpolation-end", "", self.line)
                     content = []
                     continue
                 if self.text.startswith(delimiter, next_index):
@@ -74,8 +76,10 @@ class SwiftScanner:
             if self.text[self.index] == "\\" and hashes == 0:
                 if self.text.startswith("\\(", self.index):
                     self.emit("string", "".join(content), line)
+                    self.emit("interpolation-start", "", self.line)
                     self.index += 2
                     self.scan_code(interpolation=True)
+                    self.emit("interpolation-end", "", self.line)
                     content = []
                     continue
                 if self.index + 1 < len(self.text):
@@ -128,6 +132,12 @@ class SwiftScanner:
                 if self.scan_string():
                     continue
             line = self.line
+            if char == "`":
+                end = self.text.find("`", self.index + 1)
+                if end >= 0:
+                    self.emit("identifier", self.text[self.index + 1:end], line)
+                    self.index = end + 1
+                    continue
             if char.isalpha() or char == "_":
                 start = self.index
                 self.index += 1
@@ -230,6 +240,8 @@ def spike_reference_line(items):
                 return first_line
             previous_string = True
             concatenating = False
+        elif kind in {"interpolation-start", "interpolation-end"} and previous_string:
+            concatenating = True
         elif kind == "punct" and value == "+" and previous_string:
             concatenating = True
         else:
