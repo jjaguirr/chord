@@ -12,5 +12,6 @@ let package = Package(
         .target(name: "ChordCore"),
         .executableTarget(name: "Chord", dependencies: ["ChordCore"]),
         .testTarget(name: "ChordCoreTests", dependencies: ["ChordCore"]),
+        .testTarget(name: "ChordTests", dependencies: ["Chord", "ChordCore"]),
     ]
 )
