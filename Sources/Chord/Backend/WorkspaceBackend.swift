@@ -50,14 +50,14 @@ public struct MonitorSnapshot: Equatable, Sendable {
 public struct WindowSnapshot: Equatable, Sendable {
     public let id: WindowID
     public let appName: String
-    public let workspace: Workspace
+    public let place: Place
     public let isFloating: Bool
     public let bounds: ScreenRect
 
-    public init(id: WindowID, appName: String, workspace: Workspace, isFloating: Bool, bounds: ScreenRect) {
+    public init(id: WindowID, appName: String, place: Place, isFloating: Bool, bounds: ScreenRect) {
         self.id = id
         self.appName = appName
-        self.workspace = workspace
+        self.place = place
         self.isFloating = isFloating
         self.bounds = bounds
     }
@@ -65,15 +65,24 @@ public struct WindowSnapshot: Equatable, Sendable {
 
 /// A full read of the substrate. Callers re-read after any `.unknown` error
 /// before deciding what to do next.
+///
+/// A window in the vault is never reported: the backend omits it, so it is an
+/// unknown window to every caller.
 public struct BackendSnapshot: Equatable, Sendable {
     public let monitors: [MonitorSnapshot]
     public let windows: [WindowSnapshot]
     public let focusedWindow: WindowID?
+    /// Window ids from back to front.
+    public let stackingOrder: [WindowID]
 
-    public init(monitors: [MonitorSnapshot], windows: [WindowSnapshot], focusedWindow: WindowID?) {
+    public init(
+        monitors: [MonitorSnapshot], windows: [WindowSnapshot], focusedWindow: WindowID?,
+        stackingOrder: [WindowID] = []
+    ) {
         self.monitors = monitors
         self.windows = windows
         self.focusedWindow = focusedWindow
+        self.stackingOrder = stackingOrder
     }
 }
 
@@ -98,13 +107,23 @@ public enum BackendError: Error, Equatable, Sendable {
 public protocol WorkspaceBackend: Sendable {
     func snapshot() async throws -> BackendSnapshot
 
-    /// Moves a window to another workspace and returns the workspace it left.
+    /// Moves a window to another place and returns the place it left.
     @discardableResult
-    func moveWindow(_ id: WindowID, to workspace: Workspace) async throws -> Workspace
+    func moveWindow(_ id: WindowID, to place: Place) async throws -> Place
 
-    /// Focuses a window and returns the previously focused window, if any.
+    /// Sets a window's frame exactly as given and returns the frame it replaced.
+    /// The Executor rounds before calling; the backend does not reinterpret.
+    @discardableResult
+    func applyFrame(_ id: WindowID, to frame: ScreenRect) async throws -> ScreenRect
+
+    /// Focuses a window and raises that one window only (AXRaise on the window,
+    /// never an app-wide activation that pops up its siblings). Returns the
+    /// previously focused window, if any.
     @discardableResult
     func focusWindow(_ id: WindowID) async throws -> WindowID?
+
+    /// Raises one window to the front without changing focus.
+    func raiseWindow(_ id: WindowID) async throws
 
     /// Re-establishes the connection after `.notConnected`. Idempotent when connected.
     func reconnect() async throws

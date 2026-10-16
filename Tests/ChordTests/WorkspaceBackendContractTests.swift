@@ -14,8 +14,8 @@ struct WorkspaceBackendContractTests {
                 MonitorSnapshot(id: MonitorID(2), bounds: ScreenRect(x: 1728, y: 0, width: 2560, height: 1440), isPrimary: false),
             ],
             windows: [
-                WindowSnapshot(id: WindowID(10), appName: "Terminal", workspace: .one, isFloating: true, bounds: frameA),
-                WindowSnapshot(id: WindowID(11), appName: "Safari", workspace: .two, isFloating: true, bounds: frameB),
+                WindowSnapshot(id: WindowID(10), appName: "Terminal", place: .workspace(.one), isFloating: true, bounds: frameA),
+                WindowSnapshot(id: WindowID(11), appName: "Safari", place: .workspace(.two), isFloating: true, bounds: frameB),
             ],
             focusedWindow: WindowID(10)
         )
@@ -30,7 +30,7 @@ struct WorkspaceBackendContractTests {
         #expect(snap.monitors.map(\.isPrimary) == [true, false])
         #expect(snap.monitors[1].bounds == ScreenRect(x: 1728, y: 0, width: 2560, height: 1440))
         #expect(snap.windows.map(\.id) == [WindowID(10), WindowID(11)])
-        #expect(snap.windows[1].workspace == .two)
+        #expect(snap.windows[1].place == .workspace(.two))
         #expect(snap.windows[1].bounds == frameB)
         #expect(snap.focusedWindow == WindowID(10))
     }
@@ -45,12 +45,12 @@ struct WorkspaceBackendContractTests {
     @Test func moveReturnsPreviousWorkspaceAndIsReversible() async throws {
         let backend = makeBackend()
 
-        let left = try await backend.moveWindow(WindowID(10), to: .five)
-        #expect(left == .one)
-        #expect(try await backend.snapshot().windows[0].workspace == .five)
+        let left = try await backend.moveWindow(WindowID(10), to: .workspace(.five))
+        #expect(left == .workspace(.one))
+        #expect(try await backend.snapshot().windows[0].place == .workspace(.five))
 
         try await backend.moveWindow(WindowID(10), to: left)
-        #expect(try await backend.snapshot().windows[0].workspace == .one)
+        #expect(try await backend.snapshot().windows[0].place == .workspace(.one))
     }
 
     @Test func focusReturnsPreviousFocusAndIsReversible() async throws {
@@ -64,12 +64,40 @@ struct WorkspaceBackendContractTests {
         #expect(try await backend.snapshot().focusedWindow == WindowID(10))
     }
 
+    @Test func applyFrameReturnsPreviousFrameAndIsReversible() async throws {
+        let backend = makeBackend()
+
+        let previous = try await backend.applyFrame(WindowID(10), to: frameB)
+        #expect(previous == frameA)
+        #expect(try await backend.snapshot().windows[0].bounds == frameB)
+
+        try await backend.applyFrame(WindowID(10), to: previous)
+        #expect(try await backend.snapshot().windows[0].bounds == frameA)
+    }
+
+    @Test func focusRaisesOnlyTheFocusedWindow() async throws {
+        let backend = makeBackend()
+        #expect(try await backend.snapshot().stackingOrder == [WindowID(10), WindowID(11)])
+
+        try await backend.focusWindow(WindowID(10))
+        #expect(try await backend.snapshot().stackingOrder == [WindowID(11), WindowID(10)])
+    }
+
+    @Test func raiseMovesWindowToFrontWithoutChangingFocus() async throws {
+        let backend = makeBackend()
+
+        try await backend.raiseWindow(WindowID(10))
+        let snap = try await backend.snapshot()
+        #expect(snap.stackingOrder == [WindowID(11), WindowID(10)])
+        #expect(snap.focusedWindow == WindowID(10))
+    }
+
     @Test func unknownWindowIsRejectedAndChangesNothing() async throws {
         let backend = makeBackend()
         let before = try await backend.snapshot()
 
         await #expect(throws: BackendError.unknownWindow(WindowID(99))) {
-            try await backend.moveWindow(WindowID(99), to: .three)
+            try await backend.moveWindow(WindowID(99), to: .workspace(.three))
         }
         await #expect(throws: BackendError.unknownWindow(WindowID(99))) {
             try await backend.focusWindow(WindowID(99))
@@ -83,7 +111,7 @@ struct WorkspaceBackendContractTests {
         let backend = makeBackend()
         await backend.queue([.disconnected])
         await #expect(throws: BackendError.notConnected) {
-            try await backend.moveWindow(WindowID(10), to: .four)
+            try await backend.moveWindow(WindowID(10), to: .workspace(.four))
         }
 
         await #expect(throws: BackendError.notConnected) {
@@ -94,9 +122,9 @@ struct WorkspaceBackendContractTests {
         }
 
         try await backend.reconnect()
-        #expect(try await backend.snapshot().windows[0].workspace == .one)
-        try await backend.moveWindow(WindowID(10), to: .four)
-        #expect(try await backend.snapshot().windows[0].workspace == .four)
+        #expect(try await backend.snapshot().windows[0].place == .workspace(.one))
+        try await backend.moveWindow(WindowID(10), to: .workspace(.four))
+        #expect(try await backend.snapshot().windows[0].place == .workspace(.four))
     }
 
     @Test func timeoutBeforeApplyIsUnknownAndChangesNothing() async throws {
@@ -104,9 +132,9 @@ struct WorkspaceBackendContractTests {
         await backend.queue([.timeoutBeforeApply])
 
         await #expect(throws: BackendError.unknown(reason: "timed out before apply")) {
-            try await backend.moveWindow(WindowID(10), to: .six)
+            try await backend.moveWindow(WindowID(10), to: .workspace(.six))
         }
-        #expect(try await backend.snapshot().windows[0].workspace == .one)
+        #expect(try await backend.snapshot().windows[0].place == .workspace(.one))
     }
 
     @Test func lostReplyIsUnknownButStateIsReadableAsTruth() async throws {
@@ -116,9 +144,9 @@ struct WorkspaceBackendContractTests {
         // The caller must not treat this as success, and must not assume failure:
         // the re-read snapshot is the source of truth.
         await #expect(throws: BackendError.unknown(reason: "reply lost after apply")) {
-            try await backend.moveWindow(WindowID(10), to: .six)
+            try await backend.moveWindow(WindowID(10), to: .workspace(.six))
         }
-        #expect(try await backend.snapshot().windows[0].workspace == .six)
+        #expect(try await backend.snapshot().windows[0].place == .workspace(.six))
     }
 
     @Test func faultedReadIsUnknownAndNeverFabricatesASnapshot() async throws {
