@@ -218,8 +218,6 @@ public actor Executor {
         guard let closed = focusedID, !existing.contains(closed), let place = focusedPlace else {
             return nil
         }
-        focusedID = nil
-        focusedPlace = nil
         let places = Dictionary(
             snapshot.windows.map { ($0.id.rawValue, $0.place) }, uniquingKeysWith: { first, _ in first })
         guard let next = focusOrder.last(where: { places[$0] == place }) else { return nil }
