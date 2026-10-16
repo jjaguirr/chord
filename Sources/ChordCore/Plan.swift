@@ -142,9 +142,9 @@ public struct WindowHome: Equatable, Sendable {
     public let place: Place
     public let frame: ActionRect
 
-    public init(place: Place, frame: ActionRect) {
+    public init(place: Place, frame homeFrame: ActionRect) {
         self.place = place
-        self.frame = frame
+        frame = homeFrame
     }
     fileprivate var logDescription: String { "\(place) \(frame.logDescription)" }
 }
