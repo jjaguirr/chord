@@ -18,7 +18,7 @@ behavior is not yet validated. Chord reads window geometry itself. See the
 | Picker | yes | Rects + direction vector → target window |
 | Unfold | yes | Pure `frame()` geometry |
 | Spread | no | View mode with remembered frames |
-| WorkspaceBackend | no | AeroSpace socket implementation |
+| WorkspaceBackend | no | Replaceable substrate protocol; PR1 provides a deterministic fake |
 | Executor | no | The only component allowed to change windows |
 | Agents | no | Files emitting typed plans |
 
