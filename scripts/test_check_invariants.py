@@ -243,6 +243,44 @@ class InvariantChecks(unittest.TestCase):
         )
         self.assertFlagged("b-window-mutation", "frame")
 
+    def test_unqualified_frame_property_assignment_fails(self):
+        self.write("Sources/Chord/Animator.swift", "func step() { frame.origin.x = 1 }\n")
+        self.assertFlagged("b-window-mutation", "frame")
+
+    def test_wrapping_compound_frame_mutations_fail(self):
+        for operator in ("&+=", "&-=", "&*=", "&/=", "&%="):
+            with self.subTest(operator=operator):
+                self.write(
+                    "Sources/Chord/Animator.swift",
+                    f"func step(window: W) {{ window.frame.origin.x {operator} 1 }}\n",
+                )
+                self.assertFlagged("b-window-mutation", "frame")
+
+    def test_nested_inout_frame_path_fails(self):
+        self.write(
+            "Sources/Chord/Animator.swift",
+            "func step(holder: H) { update(&holder.window.frame) }\n",
+        )
+        self.assertFlagged("b-window-mutation", "frame")
+
+    def test_concatenated_spike_target_path_fails(self):
+        self.write(
+            "Package.swift",
+            'import PackageDescription\n'
+            'let package = Package(name: "Chord", targets: [.target(name: "P", path: "sp" + "ikes/probe")])\n',
+        )
+        self.assertFlagged("d-spikes-isolation", "Package.swift")
+
+    def test_import_violations_report_import_line(self):
+        self.write("Sources/ChordCore/Leak.swift", "\n\nimport Foundation\n")
+        self.write("Sources/Chord/Net.swift", "\n\nimport Network\n")
+        self.write("spikes/probe.swift", "let value = 1\n")
+        self.write("Sources/Chord/Use.swift", "\n\nimport probe\n")
+        violations = self.violations()
+        self.assertTrue(any("[a-core-stdlib-only] Sources/ChordCore/Leak.swift:3:" in v for v in violations))
+        self.assertTrue(any("[c-socket-client] Sources/Chord/Net.swift:3:" in v for v in violations))
+        self.assertTrue(any("[d-spikes-isolation] Sources/Chord/Use.swift:3:" in v for v in violations))
+
 
 
 if __name__ == "__main__":

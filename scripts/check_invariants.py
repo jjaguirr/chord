@@ -167,21 +167,23 @@ def tokens(path):
 
 
 def imports(items):
-    """Yield imported module names; comments and literals are absent from code tokens."""
-    values = [value for kind, value, _ in items if kind != "string"]
-    for index, value in enumerate(values):
+    """Yield imported module names and their source lines."""
+    code = [token for token in items if token[0] != "string"]
+    for index, (kind, value, line) in enumerate(code):
         if value != "import":
             continue
         cursor = index + 1
-        if cursor < len(values) and values[cursor] in IMPORT_KINDS:
+        if cursor < len(code) and code[cursor][1] in IMPORT_KINDS:
             cursor += 1
-        if cursor < len(values) and values[cursor].isidentifier():
-            yield values[cursor]
+        if cursor < len(code) and code[cursor][1].isidentifier():
+            yield code[cursor][1], line
 
 
 def window_mutations(items):
     code = [token for token in items if token[0] != "string"]
     values = [value for _, value, _ in code]
+    assignments = {"=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="}
+    wrapping_assignments = {"+=", "-=", "*=", "/=", "%="}
     for index, (kind, value, line) in enumerate(code):
         if value in WINDOW_CALLS and index + 1 < len(code) and values[index + 1] == "(":
             yield value, line
@@ -192,22 +194,50 @@ def window_mutations(items):
         if value != "frame" or kind != "identifier":
             continue
         previous = values[index - 1] if index else ""
-        if previous not in {".", "?."}:
-            continue
+        qualified_frame = previous in {".", "?."}
         cursor = index + 1
+        has_member = False
         while cursor + 1 < len(code) and values[cursor] in {".", "?."} and code[cursor + 1][0] == "identifier":
+            has_member = True
             cursor += 2
-        if cursor < len(code) and values[cursor] in {"=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="}:
-            yield "frame", line
-        if "&" in values[max(0, index - 4):index]:
+        if (qualified_frame or has_member) and cursor < len(code):
+            operator = values[cursor]
+            if operator in assignments or (
+                operator == "&" and cursor + 1 < len(code) and values[cursor + 1] in wrapping_assignments
+            ):
+                yield "frame", line
+        boundary = max(
+            (position for position in range(index) if values[position] in {"(", "[", "{", ",", ";", "="}),
+            default=-1,
+        )
+        if "&" in values[boundary + 1:index]:
             yield "frame", line
 
 
-def has_spike_reference(items):
-    for kind, value, _ in items:
-        if kind == "string" and "spikes" in value:
-            return True
-    return False
+def spike_reference_line(items):
+    joined = ""
+    previous_string = False
+    concatenating = False
+    first_line = None
+    for kind, value, line in items:
+        if kind == "string":
+            if concatenating:
+                joined += value
+            else:
+                joined = value
+                first_line = line
+            if "spikes" in joined:
+                return first_line
+            previous_string = True
+            concatenating = False
+        elif kind == "punct" and value == "+" and previous_string:
+            concatenating = True
+        else:
+            previous_string = False
+            concatenating = False
+    return None
+
+
 
 
 def check(root):
@@ -219,9 +249,9 @@ def check(root):
         violations.append(f"[{check_id}] {rel}:{number}: {message}")
 
     for path in swift_files(root, "Sources/ChordCore"):
-        for module in imports(tokens(path)):
+        for module, line in imports(tokens(path)):
             if module != "Swift":
-                add("a-core-stdlib-only", path, 1,
+                add("a-core-stdlib-only", path, line,
                     f"ChordCore imports {module}; only the Swift standard library is allowed")
 
     for path in swift_files(root, "Sources"):
@@ -241,9 +271,9 @@ def check(root):
                 add("c-socket-client", path, line, f"socket client `{value}` outside {BACKEND}")
             if kind == "identifier" and value in {"socket", "connect"} and index + 1 < len(code) and code[index + 1][1] == "(":
                 add("c-socket-client", path, line, f"socket client `{value}` outside {BACKEND}")
-        for module in imports(items):
+        for module, line in imports(items):
             if module == "Network" or "Socket" in module:
-                add("c-socket-client", path, 1, f"imports {module} outside {BACKEND}")
+                add("c-socket-client", path, line, f"imports {module} outside {BACKEND}")
 
     spikes = root / "spikes"
     spike_modules = {"spikes"}
@@ -255,12 +285,12 @@ def check(root):
         candidates.append(package)
     for path in candidates:
         items = tokens(path)
-        if has_spike_reference(items):
-            line = next((line for kind, value, line in items if kind == "string" and "spikes" in value), 1)
+        line = spike_reference_line(items)
+        if line is not None:
             add("d-spikes-isolation", path, line, "references spikes")
-        for module in imports(items):
+        for module, line in imports(items):
             if module in spike_modules:
-                add("d-spikes-isolation", path, 1, f"imports spike module {module}")
+                add("d-spikes-isolation", path, line, f"imports spike module {module}")
 
     return violations
 
