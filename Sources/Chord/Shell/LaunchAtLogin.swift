@@ -4,7 +4,8 @@ import ServiceManagement
 /// Only meaningful for the packaged .app (see scripts/build-app.sh).
 enum LaunchAtLogin {
     static var isEnabled: Bool {
-        SMAppService.mainApp.status == .enabled
+        let status = SMAppService.mainApp.status
+        return status == .enabled || status == .requiresApproval
     }
 
     static var needsApproval: Bool {
