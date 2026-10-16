@@ -19,7 +19,7 @@ behavior is not yet validated. Chord reads window geometry itself. See the
 | Unfold | yes | Pure `frame()` geometry |
 | Spread | no | View mode with remembered frames |
 | WorkspaceBackend | no | Replaceable substrate protocol; PR1 provides a deterministic fake |
-| Executor | no | The only component allowed to change windows |
+| Executor | no | The only component allowed to change windows (`Sources/Chord/Executor`) |
 | Agents | no | Files emitting typed plans |
 
 Exactly one arrow reaches the socket. CI enforces the backend boundary;
