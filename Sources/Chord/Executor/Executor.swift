@@ -159,7 +159,7 @@ public actor Executor {
             do {
                 reverted.append(contentsOf: try await run([change.inverse], label: "undo"))
             } catch BackendError.unknownWindow(let id) {
-                log.append("undo skipped: window \(id) is gone")
+                log.append("undo skipped: window \(id.rawValue) is gone")
             } catch {
                 undoStack.append(Array(transaction[...index]))
                 throw error
