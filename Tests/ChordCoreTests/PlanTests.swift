@@ -150,4 +150,23 @@ struct PlanTests {
         let action = Action.place(windowID: 4, from: .bench, to: .workspace(.seven))
         #expect(action.inverse.inverse == action)
     }
+
+    @Test func planWhitelistsFrameFocusAndRestoreHomeActions() throws {
+        let frame = ActionRect(x: 0, y: 0, width: 333, height: 471)
+        let larger = ActionRect(x: 10, y: 20, width: 500, height: 300)
+        let home = WindowHome(place: .bench, frame: frame)
+        let target = WindowHome(place: .workspace(.two), frame: larger)
+        let requests: [Action] = [
+            .frame(windowID: 1, from: frame, to: larger),
+            .focus(from: 2, to: 1),
+            .restoreHome(windowID: 1, from: home, to: target),
+        ]
+        let actions = try Plan(assignments: []).actions(from: [1: .bench, 2: .workspace(.two)], requested: requests)
+
+        #expect(actions == requests)
+        #expect(actions.allSatisfy { $0.inverse.inverse == $0 })
+        #expect(actions[0].logLine == "frame window 1: (0.0, 0.0, 333.0, 471.0) -> (10.0, 20.0, 500.0, 300.0)")
+        #expect(actions[1].logLine == "focus window 1 (was 2)")
+        #expect(actions[2].logLine.hasPrefix("restore home for window 1:"))
+    }
 }

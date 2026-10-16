@@ -92,17 +92,21 @@ public struct Plan: Equatable, Sendable {
         return Plan(uncheckedAssignments: assignments)
     }
 
-    /// The actions that move each window from its current place to its planned place.
-    /// Windows already in place produce no action. Throws if the plan names a window
-    /// missing from `model`.
-    public func actions(from model: [Int: Place]) throws -> [Action] {
+    /// The actions that move each window from its current place to its planned place,
+    /// followed by requested frame, focus, or home actions. Every action must name a
+    /// window in `model`.
+    public func actions(from model: [Int: Place], requested: [Action] = []) throws -> [Action] {
         try validate(knownWindows: Set(model.keys))
-        return assignments.compactMap { assignment in
-            guard let current = model[assignment.windowID], current != assignment.place else {
-                return nil
+        for action in requested {
+            guard model[action.windowID] != nil else {
+                throw PlanError.unknownWindow(action.windowID)
             }
+        }
+        let placeActions = assignments.compactMap { assignment -> Action? in
+            guard let current = model[assignment.windowID], current != assignment.place else { return nil }
             return .place(windowID: assignment.windowID, from: current, to: assignment.place)
         }
+        return placeActions + requested
     }
 
     private init(uncheckedAssignments assignments: [Assignment]) {
@@ -117,28 +121,77 @@ public struct Plan: Equatable, Sendable {
     }
 }
 
-/// A reversible change to where one window sits. Every action has an inverse.
+/// A screen rectangle in logical points, independent of the window backend.
+public struct ActionRect: Equatable, Sendable {
+    public let x: Double
+    public let y: Double
+    public let width: Double
+    public let height: Double
+
+    public init(x: Double, y: Double, width: Double, height: Double) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+    fileprivate var logDescription: String { "(\(x), \(y), \(width), \(height))" }
+}
+
+/// A remembered window home: its place and frame.
+public struct WindowHome: Equatable, Sendable {
+    public let place: Place
+    public let frame: ActionRect
+
+    public init(place: Place, frame: ActionRect) {
+        self.place = place
+        self.frame = frame
+    }
+    fileprivate var logDescription: String { "\(place) \(frame.logDescription)" }
+}
+
+/// A reversible typed change applied by the Executor.
 public enum Action: Equatable, Sendable {
     case place(windowID: Int, from: Place, to: Place)
+    case frame(windowID: Int, from: ActionRect, to: ActionRect)
+    case focus(from: Int?, to: Int)
+    case restoreHome(windowID: Int, from: WindowHome, to: WindowHome)
+
+    public var windowID: Int {
+        switch self {
+        case .place(let id, _, _), .frame(let id, _, _), .restoreHome(let id, _, _): return id
+        case .focus(_, let id): return id
+        }
+    }
 
     public var inverse: Action {
         switch self {
-        case .place(let windowID, let from, let to):
-            return .place(windowID: windowID, from: to, to: from)
+        case .place(let id, let from, let to): return .place(windowID: id, from: to, to: from)
+        case .frame(let id, let from, let to): return .frame(windowID: id, from: to, to: from)
+        case .focus(let from, let to): return .focus(from: to, to: from ?? to)
+        case .restoreHome(let id, let from, let to): return .restoreHome(windowID: id, from: to, to: from)
         }
     }
 
-    /// Updates the place model only when it matches the action's recorded source.
-    @discardableResult
-    public func apply(to model: inout [Int: Place]) -> Bool {
+    public var logLine: String {
         switch self {
-        case .place(let windowID, let from, let to):
-            guard model[windowID] == from else { return false }
-            model[windowID] = to
-            return true
+        case .place(let id, let from, let to): return "place window \(id): \(from) -> \(to)"
+        case .frame(let id, let from, let to):
+            return "frame window \(id): \(from.logDescription) -> \(to.logDescription)"
+        case .focus(let from, let to): return "focus window \(to) (was \(from.map(String.init) ?? "none"))"
+        case .restoreHome(let id, _, let to):
+            return "restore home for window \(id): \(to.logDescription)"
         }
     }
+
+    /// Updates the place model when this action is a place transition.
+    @discardableResult
+    public func apply(to model: inout [Int: Place]) -> Bool {
+        guard case .place(let id, let from, let to) = self, model[id] == from else { return false }
+        model[id] = to
+        return true
+    }
 }
+
 
 // MARK: - Strict Codable
 

@@ -10,7 +10,7 @@ They are estimates, not promises.
 | `hjkl` aim/chord prototype | Built (single HTML file, browser only) |
 | Swift package core | Built: `ChordCore` has pure `frame()`, Picker, Plan types, and a timestamp-driven KeyStateMachine (tap/hold, chords, carry, and reshape intents); tests cover core behavior. Executable remains startup-only; no UI, window operations, or hotkeys are implemented |
 | `WorkspaceBackend` (C7 PR1, #8) | Built: protocol, deterministic `FakeWorkspaceBackend` with scripted faults, and contract tests against the fake (`Tests/ChordTests`). No real substrate: AeroSpace socket implementation is PR2, pending spike results |
-| Executor (C8, #9) | Built against the fake backend only: typed-plan apply with frame rounding, undo log (place + frame), focus via single-window raise with floats re-raised above tiles, per-workspace focus history. `WorkspaceBackend` gained `applyFrame`, `raiseWindow`, a `Place`-typed `moveWindow` and stacking order. Executor tests are written but not run locally (TestingMacros unavailable); CI runs them. Real AX AXRaise and AeroSpace behavior are unverified |
+| Executor (C8, #9) | Built against the fake backend only: typed ChordCore actions for place, frame, focus, and restore-home, applied by the Executor whitelist; frame rounding; undo log for place + frame; focus via single-window raise with floats re-raised above tiles; per-workspace focus history. `WorkspaceBackend` gained `applyFrame`, `raiseWindow`, a `Place`-typed `moveWindow` and stacking order. Executor tests cover the fake backend. Real AX AXRaise and AeroSpace behavior are unverified |
 | Unfold animation | Pure `frame()` math and tests built; animator not coded |
 | Everything else | Design only |
 

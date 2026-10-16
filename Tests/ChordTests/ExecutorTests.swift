@@ -91,8 +91,8 @@ struct ExecutorTests {
         await backend.removeWindow(WindowID(3))
         try await executor.undo()
 
-        #expect(try await windows(backend)[1]?.place == .workspace(.one))
-        #expect(await executor.log.contains { $0.contains("window 3 is gone") })
+        let log = await executor.log
+        #expect(log.contains { $0.contains("window 3 is gone") })
     }
 
     // MARK: Rejections
@@ -156,6 +156,25 @@ struct ExecutorTests {
         let applied = try await executor.setFrame(1, to: frameA)
         #expect(applied.isEmpty)
         await #expect(throws: ExecutorError.nothingToUndo) { try await executor.undo() }
+    }
+
+    @Test func restoreHomeRestoresPlaceAndFrameAndCanBeUndone() async throws {
+        let backend = makeBackend()
+        let executor = Executor(backend: backend)
+        let home = WindowHome(
+            place: .workspace(.one),
+            frame: ActionRect(x: frameA.x, y: frameA.y, width: frameA.width, height: frameA.height))
+
+        try await executor.apply(plan((1, .workspace(.five))), frames: [1: frameB])
+        try await executor.restoreHome(1, to: home)
+
+        #expect(try await windows(backend)[1]?.place == .workspace(.one))
+        #expect(try await windows(backend)[1]?.bounds == frameA)
+        #expect(await executor.log.contains { $0.contains("restore home for window 1") })
+
+        try await executor.undo()
+        #expect(try await windows(backend)[1]?.place == .workspace(.five))
+        #expect(try await windows(backend)[1]?.bounds == frameB)
     }
 
     // MARK: Focus

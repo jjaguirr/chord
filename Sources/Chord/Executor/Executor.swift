@@ -11,19 +11,30 @@ public enum Change: Equatable, Sendable {
         switch self {
         case .place(let id, let from, let to): return .place(windowID: id, from: to, to: from)
         case .frame(let id, let from, let to): return .frame(windowID: id, from: to, to: from)
-        case .focus(let from, let to):
-            // Focus has no "nothing focused" target; an empty source inverts to itself.
-            return .focus(from: to, to: from ?? to)
+        case .focus(let from, let to): return .focus(from: to, to: from ?? to)
         }
     }
 
     public var logLine: String {
         switch self {
-        case .place(let id, let from, let to): return "place window \(id): \(from) -> \(to)"
-        case .frame(let id, let from, let to): return "frame window \(id): \(from) -> \(to)"
-        case .focus(let from, let to): return "focus window \(to) (was \(from.map(String.init) ?? "none"))"
+        case .place(let id, let from, let to): return Action.place(windowID: id, from: from, to: to).logLine
+        case .frame(let id, let from, let to):
+            return Action.frame(windowID: id, from: from.actionRect, to: to.actionRect).logLine
+        case .focus(let from, let to): return Action.focus(from: from, to: to).logLine
         }
     }
+}
+
+private extension ScreenRect {
+    var actionRect: ActionRect { ActionRect(x: x, y: y, width: width, height: height) }
+}
+
+private extension ActionRect {
+    var screenRect: ScreenRect { ScreenRect(x: x, y: y, width: width, height: height) }
+}
+
+private extension WindowHome {
+    var screenRect: ScreenRect { frame.screenRect }
 }
 
 public enum ExecutorError: Error, Equatable, Sendable {
@@ -84,17 +95,14 @@ public actor Executor {
             bounds[window.id.rawValue] = window.bounds
         }
 
-        var planned: [Change] = try plan.actions(from: model).map { action in
-            switch action {
-            case .place(let id, let from, let to): return .place(windowID: id, from: from, to: to)
-            }
-        }
-        for (id, frame) in frames.sorted(by: { $0.key < $1.key }) {
+        let requested = frames.keys.sorted().compactMap { id -> Action? in
+            guard let current = bounds[id], let frame = frames[id] else { return nil }
             let target = frame.roundedToIntegers()
-            guard let current = bounds[id], current != target else { continue }
-            planned.append(.frame(windowID: id, from: current, to: target))
+            guard current != target else { return nil }
+            return .frame(windowID: id, from: current.actionRect, to: target.actionRect)
         }
-
+        let actions = try plan.actions(from: model, requested: requested)
+        let planned = changes(from: actions)
         let applied = try await run(planned)
         if !applied.isEmpty { undoStack.append(applied) }
         return applied
@@ -109,7 +117,29 @@ public actor Executor {
         }
         let target = frame.roundedToIntegers()
         guard window.bounds != target else { return [] }
-        let applied = try await run([.frame(windowID: id, from: window.bounds, to: target)])
+        let plan = try Plan(assignments: [])
+        let action = Action.frame(windowID: id, from: window.bounds.actionRect, to: target.actionRect)
+        let planned = changes(from: try plan.actions(from: [id: window.place], requested: [action]))
+        guard !planned.isEmpty else { return [] }
+        let applied = try await run(planned)
+        undoStack.append(applied)
+        return applied
+    }
+
+    /// Restores a remembered place and frame as one undoable transaction.
+    @discardableResult
+    public func restoreHome(_ id: Int, to home: WindowHome) async throws -> [Change] {
+        let snapshot = try await backend.snapshot()
+        guard let window = snapshot.windows.first(where: { $0.id.rawValue == id }) else {
+            throw PlanError.unknownWindow(id)
+        }
+        let current = WindowHome(place: window.place, frame: window.bounds.actionRect)
+        let plan = try Plan(assignments: [])
+        let action = Action.restoreHome(windowID: id, from: current, to: home)
+        let planned = changes(from: try plan.actions(from: [id: window.place], requested: [action]))
+        guard !planned.isEmpty else { return [] }
+        log.append(action.logLine)
+        let applied = try await run(planned)
         undoStack.append(applied)
         return applied
     }
@@ -144,9 +174,10 @@ public actor Executor {
         guard let window = snapshot.windows.first(where: { $0.id.rawValue == id }) else {
             throw PlanError.unknownWindow(id)
         }
-        let previous = snapshot.focusedWindow?.rawValue
-        let change = Change.focus(from: previous, to: id)
-        let applied = try await run([change])
+        let plan = try Plan(assignments: [])
+        let action = Action.focus(from: snapshot.focusedWindow?.rawValue, to: id)
+        let places = Dictionary(uniqueKeysWithValues: snapshot.windows.map { ($0.id.rawValue, $0.place) })
+        let applied = try await run(changes(from: try plan.actions(from: places, requested: [action])))
 
         focusedPlace = window.place
         if !window.isFloating {
@@ -215,6 +246,32 @@ public actor Executor {
             }
         }
         return applied
+    }
+
+    private func changes(from actions: [Action]) -> [Change] {
+        var changes: [Change] = []
+        for action in actions {
+            switch action {
+            case .place(let id, let from, let to):
+                changes.append(.place(windowID: id, from: from, to: to))
+            case .frame(let id, let from, let to):
+                let target = to.screenRect.roundedToIntegers()
+                if from.screenRect != target {
+                    changes.append(.frame(windowID: id, from: from.screenRect, to: target))
+                }
+            case .focus(let from, let to):
+                changes.append(.focus(from: from, to: to))
+            case .restoreHome(let id, let from, let to):
+                if from.place != to.place {
+                    changes.append(.place(windowID: id, from: from.place, to: to.place))
+                }
+                let target = to.screenRect.roundedToIntegers()
+                if from.frame.screenRect != target {
+                    changes.append(.frame(windowID: id, from: from.frame.screenRect, to: target))
+                }
+            }
+        }
+        return changes
     }
 
     private func perform(_ change: Change) async throws -> Change {
