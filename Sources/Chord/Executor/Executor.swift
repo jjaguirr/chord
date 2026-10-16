@@ -6,12 +6,14 @@ public enum Change: Equatable, Sendable {
     case place(windowID: Int, from: Place, to: Place)
     case frame(windowID: Int, from: ScreenRect, to: ScreenRect)
     case focus(from: Int?, to: Int)
+    case noop(windowID: Int)
 
     public var inverse: Change {
         switch self {
         case .place(let id, let from, let to): return .place(windowID: id, from: to, to: from)
         case .frame(let id, let from, let to): return .frame(windowID: id, from: to, to: from)
-        case .focus(let from, let to): return .focus(from: to, to: from ?? to)
+        case .focus(let from, let to): return from.map { .focus(from: to, to: $0) } ?? .noop(windowID: to)
+        case .noop: return self
         }
     }
 
@@ -21,6 +23,7 @@ public enum Change: Equatable, Sendable {
         case .frame(let id, let from, let to):
             return Action.frame(windowID: id, from: from.actionRect, to: to.actionRect).logLine
         case .focus(let from, let to): return Action.focus(from: from, to: to).logLine
+        case .noop: return Action.noop(windowID: 0).logLine
         }
     }
 }
@@ -50,9 +53,8 @@ extension ScreenRect {
 
 /// The only component that changes windows. It accepts typed plans and explicit
 /// frames, validates them against a fresh backend snapshot, applies them through
-/// `WorkspaceBackend`, and logs every change. Rearrangements are undoable as one
-/// step; focus changes are logged with an inverse but are navigation, not
-/// rearrangement, so they are not on the undo stack.
+/// `WorkspaceBackend`, and logs every change. Rearrangements and focus changes are
+/// undoable, including a logged no-op when focus had no previous window.
 ///
 /// Size is never decided here: frames are applied exactly as the caller supplies
 /// them, rounded to integers. The Executor never reads a frame back to compute
@@ -138,14 +140,14 @@ public actor Executor {
         let action = Action.restoreHome(windowID: id, from: current, to: home)
         let planned = changes(from: try plan.actions(from: [id: window.place], requested: [action]))
         guard !planned.isEmpty else { return [] }
-        log.append(action.logLine)
         let applied = try await run(planned)
+        log.append(action.logLine)
         undoStack.append(applied)
         return applied
     }
 
-    /// Reverts the most recent rearrangement, restoring each window's previous
-    /// place and frame. Windows that have since closed are skipped and logged.
+    /// Reverts the most recent rearrangement or focus change. Windows that have
+    /// since closed are skipped and logged.
     /// If the backend fails midway, the changes not yet reverted stay undoable.
     @discardableResult
     public func undo() async throws -> [Change] {
@@ -178,6 +180,7 @@ public actor Executor {
         let action = Action.focus(from: snapshot.focusedWindow?.rawValue, to: id)
         let places = Dictionary(uniqueKeysWithValues: snapshot.windows.map { ($0.id.rawValue, $0.place) })
         let applied = try await run(changes(from: try plan.actions(from: places, requested: [action])))
+        if !applied.isEmpty { undoStack.append(applied) }
 
         focusedPlace = window.place
         if !window.isFloating {
@@ -269,6 +272,8 @@ public actor Executor {
                 if from.frame.screenRect != target {
                     changes.append(.frame(windowID: id, from: from.frame.screenRect, to: target))
                 }
+            case .noop(let id):
+                changes.append(.noop(windowID: id))
             }
         }
         return changes
@@ -280,11 +285,14 @@ public actor Executor {
             let from = try await backend.moveWindow(WindowID(id), to: to)
             return .place(windowID: id, from: from, to: to)
         case .frame(let id, _, let to):
-            let from = try await backend.applyFrame(WindowID(id), to: to)
-            return .frame(windowID: id, from: from, to: to)
+            let target = to.roundedToIntegers()
+            let from = try await backend.applyFrame(WindowID(id), to: target)
+            return .frame(windowID: id, from: from, to: target)
         case .focus(_, let to):
             let from = try await backend.focusWindow(WindowID(to))
             return .focus(from: from?.rawValue, to: to)
+        case .noop(let id):
+            return .noop(windowID: id)
         }
     }
 
@@ -298,6 +306,8 @@ public actor Executor {
             return snapshot.windows.first { $0.id.rawValue == id }?.bounds == to
         case .focus(_, let to):
             return snapshot.focusedWindow?.rawValue == to
+        case .noop:
+            return true
         }
     }
 
@@ -310,7 +320,7 @@ public actor Executor {
             focusedID = to
         case .place(let id, _, let to) where id == focusedID:
             focusedPlace = to
-        case .place, .frame:
+        case .place, .frame, .noop:
             break
         }
     }

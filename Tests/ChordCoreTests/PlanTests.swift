@@ -169,4 +169,11 @@ struct PlanTests {
         #expect(actions[1].logLine == "focus window 1 (was 2)")
         #expect(actions[2].logLine.hasPrefix("restore home for window 1:"))
     }
+
+    @Test func focusWithoutPriorWindowInvertsToExplicitNoOp() throws {
+        let focus = Action.focus(from: nil, to: 3)
+        #expect(focus.inverse == .noop(windowID: 3))
+        #expect(focus.inverse.logLine == "nothing to restore")
+        #expect(focus.inverse.inverse == focus.inverse)
+    }
 }

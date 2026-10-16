@@ -149,16 +149,18 @@ public struct WindowHome: Equatable, Sendable {
     fileprivate var logDescription: String { "\(place) \(frame.logDescription)" }
 }
 
-/// A reversible typed change applied by the Executor.
+/// A reversible typed change applied by the Executor. A focus action with no prior
+/// focused window inverts to a logged no-op because the backend cannot clear focus.
 public enum Action: Equatable, Sendable {
     case place(windowID: Int, from: Place, to: Place)
     case frame(windowID: Int, from: ActionRect, to: ActionRect)
     case focus(from: Int?, to: Int)
     case restoreHome(windowID: Int, from: WindowHome, to: WindowHome)
+    case noop(windowID: Int)
 
     public var windowID: Int {
         switch self {
-        case .place(let id, _, _), .frame(let id, _, _), .restoreHome(let id, _, _): return id
+        case .place(let id, _, _), .frame(let id, _, _), .restoreHome(let id, _, _), .noop(let id): return id
         case .focus(_, let id): return id
         }
     }
@@ -167,8 +169,10 @@ public enum Action: Equatable, Sendable {
         switch self {
         case .place(let id, let from, let to): return .place(windowID: id, from: to, to: from)
         case .frame(let id, let from, let to): return .frame(windowID: id, from: to, to: from)
-        case .focus(let from, let to): return .focus(from: to, to: from ?? to)
+        // Without a prior focused window, inverse is an explicit no-op; the backend cannot clear focus.
+        case .focus(let from, let to): return from.map { .focus(from: to, to: $0) } ?? .noop(windowID: to)
         case .restoreHome(let id, let from, let to): return .restoreHome(windowID: id, from: to, to: from)
+        case .noop: return self
         }
     }
 
@@ -180,6 +184,7 @@ public enum Action: Equatable, Sendable {
         case .focus(let from, let to): return "focus window \(to) (was \(from.map(String.init) ?? "none"))"
         case .restoreHome(let id, _, let to):
             return "restore home for window \(id): \(to.logDescription)"
+        case .noop: return "nothing to restore"
         }
     }
 

@@ -151,6 +151,17 @@ struct ExecutorTests {
         #expect(try await windows(backend)[1]?.bounds == ScreenRect(x: 10, y: 21, width: 500, height: 301))
     }
 
+    @Test func undoRoundsFractionalPreviousFrameAtBackendBoundary() async throws {
+        let fractional = ScreenRect(x: 10.4, y: 20.5, width: 500.49, height: 300.51)
+        let backend = makeBackend([window(1, .workspace(.one), frame: fractional)])
+        let executor = Executor(backend: backend)
+
+        try await executor.setFrame(1, to: frameB)
+        try await executor.undo()
+
+        #expect(try await windows(backend)[1]?.bounds == ScreenRect(x: 10, y: 21, width: 500, height: 301))
+    }
+
     @Test func settingTheSameFrameIsANoOp() async throws {
         let executor = Executor(backend: makeBackend())
         let applied = try await executor.setFrame(1, to: frameA)
@@ -231,6 +242,18 @@ struct ExecutorTests {
         #expect(change == .focus(from: 1, to: 2))
         #expect(change.inverse == .focus(from: 2, to: 1))
         #expect(await executor.log.first == "focus window 2 (was 1)")
+    }
+
+    @Test func undoOfFocusWithoutPriorWindowLogsNoOp() async throws {
+        let backend = makeBackend()
+        let executor = Executor(backend: backend)
+
+        let change = try await executor.focus(1)
+        #expect(change.inverse == .noop(windowID: 1))
+        try await executor.undo()
+
+        #expect(try await backend.snapshot().focusedWindow == WindowID(1))
+        #expect(await executor.log.last == "undo: nothing to restore")
     }
 
     // MARK: Focus history
