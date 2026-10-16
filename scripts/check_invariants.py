@@ -4,49 +4,161 @@
 Usage: scripts/check_invariants.py [repo-root]
 
 Prints one line per violation and exits 1; exits 0 when clean.
-
-Checks (see AGENTS.md "Definition of done"):
-  a-core-stdlib-only  Sources/ChordCore imports only the Swift standard library.
-  b-window-mutation   Window-mutating calls appear only in Sources/Chord/Executor/.
-  c-socket-client     The workspace-backend socket client is used only in
-                      Sources/Chord/Backend/.
-  d-spikes-isolation  Nothing under Sources/ or Package.swift references the spikes tree.
-
-Limits: line comments (`//`) are stripped before matching, except when they
-occur inside a double-quoted string literal. A block comment that mentions a
-banned call is a false positive (stricter, acceptable).
 """
-import re
 import sys
 from pathlib import Path
 
 EXECUTOR = "Sources/Chord/Executor"
 BACKEND = "Sources/Chord/Backend"
+WINDOW_CALLS = {
+    "setFrame", "setFrameOrigin", "setFrameSize", "setPosition", "setSize",
+    "setContentSize", "AXUIElementSetAttributeValue", "AXRaiseAction",
+    "makeKeyAndOrderFront", "orderFront", "raise", "moveTo", "move", "resize",
+}
+SOCKET_TYPES = {
+    "AF_UNIX", "sockaddr_un", "NWConnection", "NWEndpoint", "NWParameters",
+    "SocketClient", "AeroSpaceSocket", "AeroSpaceClient",
+}
+IMPORT_KINDS = {"struct", "class", "enum", "protocol", "typealias", "func", "var", "let"}
 
-IMPORT = re.compile(
-    r"^\s*(?:@\w+(?:\([^)]*\))?\s+)*"
-    r"(?:(?:public|internal|package|private|fileprivate)\s+)?"
-    r"import\s+(?:(?:struct|class|enum|protocol|typealias|func|var|let)\s+)?"
-    r"([A-Za-z_]\w*)"
-)
 
-WINDOW_MUTATION = re.compile(
-    r"\b(?:setFrame|setFrameOrigin|setFrameSize|setPosition|setSize|setContentSize"
-    r"|AXUIElementSetAttributeValue|AXRaiseAction|makeKeyAndOrderFront|orderFront"
-    r"|raise|moveTo|move|resize)\s*\("
-    r"|\bAXUIElementPerformAction\s*\([^)]*\bkAXRaiseAction\b"
-    r"|\b(?:\w+\??\.)+frame(?:\.\w+|\?\.\w+)*\s*(?:(?:[+\-*/%&|^~]+|<<|>>)=|(?<![=!<>])=(?!=|>))"
-    r"|\bframe(?:\.\w+|\?\.\w+)+\s*(?:(?:[+\-*/%&|^~]+|<<|>>)=|(?<![=!<>])=(?!=|>))"
-    r"|&\s*(?:\w+\??\.)*frame\b"
-)
+class SwiftScanner:
+    """Small lexical scanner: code tokens, string contents, and source locations."""
 
-SOCKET_CLIENT = re.compile(
-    r"\b(?:AF_UNIX|sockaddr_un|NWConnection|NWEndpoint|NWParameters"
-    r"|SocketClient|AeroSpaceSocket|AeroSpaceClient)\b"
-    r"|\b(?:socket|connect)\s*\("
-)
+    def __init__(self, text):
+        self.text = text
+        self.index = 0
+        self.line = 1
+        self.tokens = []
 
-SPIKE_REFERENCE = re.compile(r"\bspikes\b")
+    def emit(self, kind, value, line):
+        self.tokens.append((kind, value, line))
+
+    def scan_string(self):
+        start = self.index
+        hashes = 0
+        while self.index < len(self.text) and self.text[self.index] == "#":
+            hashes += 1
+            self.index += 1
+        if self.index >= len(self.text) or self.text[self.index] != '"':
+            self.index = start
+            return False
+        triple = self.text.startswith('"""', self.index)
+        delimiter = '"""' if triple else '"'
+        self.index += len(delimiter)
+        line = self.line
+        content = []
+        while self.index < len(self.text):
+            if self.text.startswith(delimiter + "#" * hashes, self.index):
+                self.emit("string", "".join(content), line)
+                self.index += len(delimiter) + hashes
+                return True
+            if self.text[self.index] == "\n":
+                content.append("\n")
+                self.line += 1
+                self.index += 1
+                continue
+            escape = "\\" + "#" * hashes
+            if self.text.startswith(escape, self.index):
+                next_index = self.index + len(escape)
+                if self.text.startswith("(", next_index):
+                    self.emit("string", "".join(content), line)
+                    self.emit("interpolation-start", "", self.line)
+                    self.index = next_index + 1
+                    self.scan_code(interpolation=True)
+                    self.emit("interpolation-end", "", self.line)
+                    content = []
+                    continue
+                if self.text.startswith(delimiter, next_index):
+                    content.append(delimiter)
+                    self.index = next_index + len(delimiter)
+                    continue
+            if self.text[self.index] == "\\" and hashes == 0:
+                if self.text.startswith("\\(", self.index):
+                    self.emit("string", "".join(content), line)
+                    self.emit("interpolation-start", "", self.line)
+                    self.index += 2
+                    self.scan_code(interpolation=True)
+                    self.emit("interpolation-end", "", self.line)
+                    content = []
+                    continue
+                if self.index + 1 < len(self.text):
+                    content.append(self.text[self.index + 1])
+                    if self.text[self.index + 1] == "\n":
+                        self.line += 1
+                    self.index += 2
+                    continue
+            content.append(self.text[self.index])
+            self.index += 1
+        self.emit("string", "".join(content), line)
+        return True
+
+    def scan_code(self, interpolation=False):
+        depth = 0
+        while self.index < len(self.text):
+            char = self.text[self.index]
+            if char.isspace():
+                if char == "\n":
+                    self.line += 1
+                self.index += 1
+                continue
+            if self.text.startswith("//", self.index):
+                end = self.text.find("\n", self.index + 2)
+                self.index = len(self.text) if end < 0 else end
+                continue
+            if self.text.startswith("/*", self.index):
+                self.index += 2
+                nested = 1
+                while self.index < len(self.text) and nested:
+                    if self.text.startswith("/*", self.index):
+                        nested += 1
+                        self.index += 2
+                    elif self.text.startswith("*/", self.index):
+                        nested -= 1
+                        self.index += 2
+                    else:
+                        if self.text[self.index] == "\n":
+                            self.line += 1
+                        self.index += 1
+                continue
+            if interpolation and char == ")":
+                if depth == 0:
+                    self.index += 1
+                    return
+                depth -= 1
+            elif interpolation and char == "(":
+                depth += 1
+            if char == "#" or char == '"':
+                if self.scan_string():
+                    continue
+            line = self.line
+            if char == "`":
+                end = self.text.find("`", self.index + 1)
+                if end >= 0:
+                    self.emit("identifier", self.text[self.index + 1:end], line)
+                    self.index = end + 1
+                    continue
+            if char.isalpha() or char == "_":
+                start = self.index
+                self.index += 1
+                while self.index < len(self.text) and (self.text[self.index].isalnum() or self.text[self.index] == "_"):
+                    self.index += 1
+                self.emit("identifier", self.text[start:self.index], line)
+                continue
+            if self.text.startswith("<<=", self.index) or self.text.startswith(">>=", self.index):
+                self.emit("punct", self.text[self.index:self.index + 3], line)
+                self.index += 3
+                continue
+            if self.text.startswith(("?.", "==", "!=", "<=", ">=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "&&", "||", "->"), self.index):
+                self.emit("punct", self.text[self.index:self.index + 2], line)
+                self.index += 2
+                continue
+            self.emit("punct", char, line)
+            self.index += 1
+
+    def scan(self):
+        self.scan_code()
+        return self.tokens
 
 
 def swift_files(root, under):
@@ -56,23 +168,88 @@ def swift_files(root, under):
     return sorted(base.rglob("*.swift"))
 
 
-LINE_COMMENT_OR_STRING = re.compile(r'"(?:\\.|[^"\\])*"|//.*')
-
-
-def strip_line_comment(line):
-    return LINE_COMMENT_OR_STRING.sub(
-        lambda match: "" if match.group(0).startswith("//") else match.group(0),
-        line,
-    )
-
-
-def code_lines(path):
-    text = path.read_text(encoding="utf-8")
-    for number, line in enumerate(text.splitlines(), start=1):
-        yield number, strip_line_comment(line)
-
 def under(path, root, prefix):
     return path.relative_to(root).as_posix().startswith(prefix + "/")
+
+
+def tokens(path):
+    return SwiftScanner(path.read_text(encoding="utf-8")).scan()
+
+
+def imports(items):
+    """Yield imported module names and their source lines."""
+    code = [token for token in items if token[0] != "string"]
+    for index, (kind, value, line) in enumerate(code):
+        if value != "import":
+            continue
+        cursor = index + 1
+        if cursor < len(code) and code[cursor][1] in IMPORT_KINDS:
+            cursor += 1
+        if cursor < len(code) and code[cursor][1].isidentifier():
+            yield code[cursor][1], line
+
+
+def window_mutations(items):
+    code = [token for token in items if token[0] != "string"]
+    values = [value for _, value, _ in code]
+    assignments = {"=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="}
+    wrapping_assignments = {"+=", "-=", "*=", "/=", "%="}
+    for index, (kind, value, line) in enumerate(code):
+        if value in WINDOW_CALLS and index + 1 < len(code) and values[index + 1] == "(":
+            yield value, line
+        if value == "AXUIElementPerformAction" and index + 1 < len(code):
+            end = next((j for j in range(index + 1, len(code)) if values[j] == ")"), len(code))
+            if "kAXRaiseAction" in values[index + 1:end]:
+                yield value, line
+        if value != "frame" or kind != "identifier":
+            continue
+        previous = values[index - 1] if index else ""
+        qualified_frame = previous in {".", "?."}
+        cursor = index + 1
+        has_member = False
+        while cursor + 1 < len(code) and values[cursor] in {".", "?."} and code[cursor + 1][0] == "identifier":
+            has_member = True
+            cursor += 2
+        if (qualified_frame or has_member) and cursor < len(code):
+            operator = values[cursor]
+            if operator in assignments or (
+                operator == "&" and cursor + 1 < len(code) and values[cursor + 1] in wrapping_assignments
+            ):
+                yield "frame", line
+        boundary = max(
+            (position for position in range(index) if values[position] in {"(", "[", "{", ",", ";", "="}),
+            default=-1,
+        )
+        if "&" in values[boundary + 1:index]:
+            yield "frame", line
+
+
+def spike_reference_line(items):
+    joined = ""
+    previous_string = False
+    concatenating = False
+    first_line = None
+    for kind, value, line in items:
+        if kind == "string":
+            if concatenating:
+                joined += value
+            else:
+                joined = value
+                first_line = line
+            if "spikes" in joined:
+                return first_line
+            previous_string = True
+            concatenating = False
+        elif kind in {"interpolation-start", "interpolation-end"} and previous_string:
+            concatenating = True
+        elif kind == "punct" and value == "+" and previous_string:
+            concatenating = True
+        else:
+            previous_string = False
+            concatenating = False
+    return None
+
+
 
 
 def check(root):
@@ -83,54 +260,49 @@ def check(root):
         rel = path.relative_to(root).as_posix()
         violations.append(f"[{check_id}] {rel}:{number}: {message}")
 
-    # a: ChordCore is stdlib-only.
     for path in swift_files(root, "Sources/ChordCore"):
-        for number, line in code_lines(path):
-            match = IMPORT.match(line)
-            if match and match.group(1) != "Swift":
-                add("a-core-stdlib-only", path, number,
-                    f"ChordCore imports {match.group(1)}; only the Swift standard library is allowed")
+        for module, line in imports(tokens(path)):
+            if module != "Swift":
+                add("a-core-stdlib-only", path, line,
+                    f"ChordCore imports {module}; only the Swift standard library is allowed")
 
-    # b: only the Executor changes windows.
     for path in swift_files(root, "Sources"):
         if under(path, root, EXECUTOR):
             continue
-        for number, line in code_lines(path):
-            match = WINDOW_MUTATION.search(line)
-            if match:
-                add("b-window-mutation", path, number,
-                    f"window-mutating call `{match.group(0).strip()}` outside {EXECUTOR}")
+        for mutation, line in window_mutations(tokens(path)):
+            add("b-window-mutation", path, line,
+                f"window-mutating call `{mutation}` outside {EXECUTOR}")
 
-    # c: the workspace-backend socket client is used only by the backend.
     for path in swift_files(root, "Sources"):
         if under(path, root, BACKEND):
             continue
-        for number, line in code_lines(path):
-            match = SOCKET_CLIENT.search(line)
-            if match:
-                add("c-socket-client", path, number,
-                    f"socket client `{match.group(0).strip()}` outside {BACKEND}")
-            imported = IMPORT.match(line)
-            if imported and (imported.group(1) == "Network" or "Socket" in imported.group(1)):
-                add("c-socket-client", path, number,
-                    f"imports {imported.group(1)} outside {BACKEND}")
+        items = tokens(path)
+        code = [token for token in items if token[0] != "string"]
+        for index, (kind, value, line) in enumerate(code):
+            if kind == "identifier" and value in SOCKET_TYPES:
+                add("c-socket-client", path, line, f"socket client `{value}` outside {BACKEND}")
+            if kind == "identifier" and value in {"socket", "connect"} and index + 1 < len(code) and code[index + 1][1] == "(":
+                add("c-socket-client", path, line, f"socket client `{value}` outside {BACKEND}")
+        for module, line in imports(items):
+            if module == "Network" or "Socket" in module:
+                add("c-socket-client", path, line, f"imports {module} outside {BACKEND}")
 
-    # d: Sources and Package.swift never reach into spikes/.
     spikes = root / "spikes"
     spike_modules = {"spikes"}
     if spikes.is_dir():
         spike_modules |= {entry.stem for entry in spikes.iterdir()}
     candidates = swift_files(root, "Sources")
-    if (root / "Package.swift").is_file():
-        candidates.append(root / "Package.swift")
+    package = root / "Package.swift"
+    if package.is_file():
+        candidates.append(package)
     for path in candidates:
-        for number, line in code_lines(path):
-            if SPIKE_REFERENCE.search(line):
-                add("d-spikes-isolation", path, number, "references spikes")
-            imported = IMPORT.match(line)
-            if imported and imported.group(1) in spike_modules:
-                add("d-spikes-isolation", path, number,
-                    f"imports spike module {imported.group(1)}")
+        items = tokens(path)
+        line = spike_reference_line(items)
+        if line is not None:
+            add("d-spikes-isolation", path, line, "references spikes")
+        for module, line in imports(items):
+            if module in spike_modules:
+                add("d-spikes-isolation", path, line, f"imports spike module {module}")
 
     return violations
 
