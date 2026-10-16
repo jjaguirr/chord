@@ -270,6 +270,7 @@ class InvariantChecks(unittest.TestCase):
             'let package = Package(name: "Chord", targets: [.target(name: "P", path: "sp" + "ikes/probe")])\n',
         )
         self.assertFlagged("d-spikes-isolation", "Package.swift")
+
     def test_interpolated_spike_target_path_fails(self):
         self.write(
             "Package.swift",
