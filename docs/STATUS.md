@@ -22,8 +22,7 @@ behavior, generated landmarks, Picker rules and properties, Plan
 validation, decoding, fallback, and action reversibility, plus KeyStateMachine
 event sequences for tap/hold, direction chords, carry repeats and edge
 snapping, and reshape intents. No UI, window operations, or hotkeys are
-implemented. `WorkspaceBackend` has a protocol and a fake with contract tests in
-`Tests/ChordTests`; no real substrate is wired.
+implemented. No real substrate is wired; see the `WorkspaceBackend` row above.
 
 `swift build` succeeds. `swift test` is currently blocked because this machine's Swift installation cannot load the `TestingMacros` plugin; the existing test target fails before tests execute.
 Picker supports came-from preference on exact primary-score ties; pathological layouts may remain non-reciprocal under the required tie order. Diagonal tie-breaking uses explicit pure screen bounds; horizontal z-fallback is a no-op when no spatial target exists.
