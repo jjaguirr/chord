@@ -53,8 +53,10 @@ extension ScreenRect {
 
 /// The only component that changes windows. It accepts typed plans and explicit
 /// frames, validates them against a fresh backend snapshot, applies them through
-/// `WorkspaceBackend`, and logs every change. Rearrangements and focus changes are
-/// undoable, including a logged no-op when focus had no previous window.
+/// `WorkspaceBackend`, and logs every change. Undo restores the previous window,
+/// frame, and place, but not the exact stacking order ([#42](https://github.com/jjaguirr/chord/issues/42)).
+/// Rearrangements and focus changes are undoable, including a logged no-op when
+/// focus had no previous window.
 ///
 /// Size is never decided here: frames are applied exactly as the caller supplies
 /// them, rounded to integers. The Executor never reads a frame back to compute
@@ -314,7 +316,11 @@ public actor Executor {
     private func record(_ change: Change, label: String?) {
         log.append(label.map { "\($0): \(change.logLine)" } ?? change.logLine)
         switch change {
-        case .focus(_, let to):
+        case .focus(let from, let to):
+            if let from {
+                focusOrder.removeAll { $0 == from }
+                focusOrder.append(from)
+            }
             focusOrder.removeAll { $0 == to }
             focusOrder.append(to)
             focusedID = to

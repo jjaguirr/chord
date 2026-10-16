@@ -275,6 +275,20 @@ struct ExecutorTests {
         #expect(try await executor.focusHistory(in: .workspace(.one)) == [2, 1])
     }
 
+    @Test func focusHistoryIncludesPreexistingFocusedWindow() async throws {
+        let backend = makeBackend(
+            [window(1, .workspace(.one)), window(2, .workspace(.one))],
+            focused: 1)
+        let executor = Executor(backend: backend)
+
+        try await executor.focus(2)
+        await backend.removeWindow(WindowID(2))
+
+        #expect(try await executor.reconcileAfterClose() == 1)
+        #expect(try await backend.snapshot().focusedWindow == WindowID(1))
+        #expect(try await executor.focusHistory(in: .workspace(.one)) == [1])
+    }
+
     @Test func closingAnUnfocusedWindowDoesNotMoveFocus() async throws {
         let backend = makeBackend([window(1, .workspace(.one)), window(2, .workspace(.one))])
         let executor = Executor(backend: backend)
