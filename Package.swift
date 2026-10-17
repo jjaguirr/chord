@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Chord",
+    platforms: [.macOS(.v13)],
     products: [
         .library(name: "ChordCore", targets: ["ChordCore"]),
         .executable(name: "Chord", targets: ["Chord"]),

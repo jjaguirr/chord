@@ -4,9 +4,11 @@
 Chord is a keyboard-first window manager for macOS. It decides **where**
 windows live and **how you move between them** — and leaves **size** to you.
 
-> **Status: pre-alpha, bootstrap only.** The dependency-free Swift package
-> builds and prints a startup message; it is not a functioning window manager.
-> The browser input prototype remains separate. The pure core now includes a timestamp-driven key state machine; integration into the app and most product behavior remain design-only.
+> **Status: pre-alpha, app shell only.** Chord builds as a menu-bar agent
+> bundle (`scripts/build-app.sh`) with an Accessibility permission flow, a pause
+> switch, and launch at login. It is not yet a functioning window manager: no
+> window operations, hotkeys, or backend are wired in. The pure core includes a
+> timestamp-driven key state machine; integration into the app remains design-only.
 
 ## The bet
 
@@ -34,18 +36,26 @@ this is worth keeping. If it doesn't, we find out in weeks.
 `Mod` is Option on macOS. Keys bind by **physical position**, so Dvorak and
 Colemak users keep the home row.
 
-## Build and run the bootstrap
+## Build and run
 
-Requires Swift 6.0 or newer (macOS for the intended window manager).
+Requires Swift 6.0 or newer and macOS 13 or newer.
 
 ```sh
 swift build
 swift run Chord
 swift build --build-tests
+scripts/build-app.sh          # writes build/Chord.app
+open build/Chord.app
 ```
 
-`Chord` prints `Chord: bootstrap only; window management is not implemented.`
-and exits. It does not access or change windows, register hotkeys, or start UI.
+`swift run Chord` runs the menu-bar shell without a bundle; launch at login
+requires the packaged `.app`. The shell adds a menu-bar item showing status
+(running, paused, or needs Accessibility permission), Pause/Resume, Launch at
+Login (off by default), Open Log Folder (placeholder target until diagnostics
+lands), and Quit. Without Accessibility access it explains why, opens System
+Settings, and re-checks every second. Log lines go to `~/Library/Logs/Chord/chord.log`.
+The bundle id `com.example.chord` is a placeholder for the release issue.
+
 `ChordCore` contains pure `frame()` math, a spatial `Picker`, Plan types with
 strict decoding and fallback, and a timestamp-driven `KeyStateMachine` for
 tap/hold, directional chords, carry, and reshape intents. `ChordCoreTests` has

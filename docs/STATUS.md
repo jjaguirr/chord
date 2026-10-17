@@ -8,23 +8,25 @@ They are estimates, not promises.
 | Piece | State |
 |---|---|
 | `hjkl` aim/chord prototype | Built (single HTML file, browser only) |
-| Swift package core | Built: `ChordCore` has pure `frame()`, Picker, Plan types, and a timestamp-driven KeyStateMachine (tap/hold, chords, carry, and reshape intents); tests cover core behavior. The executable remains startup-only; Executor window operations are implemented against the fake backend but are not wired into the executable, and no UI or hotkeys are implemented |
+| Swift package core | Built: `ChordCore` has pure `frame()`, Picker, Plan types, and a timestamp-driven KeyStateMachine (tap/hold, chords, carry, and reshape intents); tests cover core behavior. Executor window operations are implemented against the fake backend but are not wired into the executable; no hotkeys are implemented |
 | `WorkspaceBackend` (C7 PR1, #8) | Built: protocol, deterministic `FakeWorkspaceBackend` with scripted faults, and contract tests against the fake (`Tests/ChordTests`). No real substrate: AeroSpace socket implementation is PR2, pending spike results |
 | Executor (C8, #9) | Built against the fake backend only: typed ChordCore actions for place, frame, focus, and restore-home, applied by the Executor whitelist; frame rounding; undo for place, frame, focus, and restore-home; focus via single-window raise with floats re-raised above tiles; per-workspace focus history. `WorkspaceBackend` gained `applyFrame`, `raiseWindow`, a `Place`-typed `moveWindow` and stacking order. Executor tests cover the fake backend. Real AX AXRaise and AeroSpace behavior are unverified |
+| App shell (#23) | Built; see [README](../README.md) for shell behavior and packaging details |
 | Unfold animation | Pure `frame()` math and tests built; animator not coded |
 | Everything else | Design only |
 
 ## Bootstrap
 
-With Swift 6.0 or newer, `swift build` builds the package and `swift run Chord`
-prints `Chord: bootstrap only; window management is not implemented.` then exits.
+`swift build` builds the package and `swift run Chord` starts the menu-bar shell
+(no Dock icon). `scripts/build-app.sh` builds `build/Chord.app`.
 `swift build --build-tests` compiles the test target. Tests cover frame
 behavior, generated landmarks, Picker rules and properties, Plan
 validation, decoding, fallback, and action reversibility, plus KeyStateMachine
 event sequences for tap/hold, direction chords, carry repeats and edge
 snapping, and reshape intents. Executor operations are tested through the fake
-backend but are not wired into the executable. No UI or hotkeys are implemented.
-No real substrate is wired; see the `WorkspaceBackend` row above.
+backend but are not wired into the executable. No hotkeys are implemented.
+No real substrate is wired; see the `WorkspaceBackend` row above. The app
+shell does not yet integrate window operations or hotkeys.
 
 `swift build` succeeds. `swift test` is currently blocked because this machine's Swift installation cannot load the `TestingMacros` plugin; the existing test target fails before tests execute.
 Picker supports came-from preference on exact primary-score ties; pathological layouts may remain non-reciprocal under the required tie order. Diagonal tie-breaking uses explicit pure screen bounds; horizontal z-fallback is a no-op when no spatial target exists.
