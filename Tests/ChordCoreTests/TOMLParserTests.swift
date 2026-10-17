@@ -46,10 +46,24 @@ struct TOMLParserTests {
         #expect(entries["n"]?.value == .boolean(false))
     }
 
+    @Test("floats reject leading-zero integer parts")
+    func leadingZeroFloats() {
+        #expect(parseError("x = 01.2\n")?.line == 1)
+        #expect(parseError("x = -01e2\n")?.line == 1)
+        #expect(parseError("x = [0.2, 01.2]\n")?.line == 1)
+    }
+
     @Test("string escapes decode")
     func stringEscapes() throws {
         let entries = try TOMLParser.parse(#"s = "a\"b\\c\nd\te\rf""#).tables[0].entries
         #expect(entries["s"]?.value == .string("a\"b\\c\nd\te\rf"))
+    }
+
+    @Test("basic strings reject unescaped control characters")
+    func unescapedControlCharacters() {
+        #expect(parseError("x = \"a\tb\"\n")?.line == 1)
+        #expect(parseError("x = \"a\u{0001}b\"\n")?.line == 1)
+        #expect(parseError("\"a\u{0085}b\" = 1\n")?.line == 1)
     }
 
     @Test("single-line arrays of scalars, trailing comma allowed")

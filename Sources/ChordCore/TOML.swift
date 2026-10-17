@@ -142,7 +142,12 @@ private func isDecimalFloat(_ s: String) -> Bool {
     var rest = Substring(s)
     if rest.first == "+" || rest.first == "-" { rest.removeFirst() }
     guard let first = rest.first, isDigit(first) else { return false }
-    if first == "0" { rest.removeFirst() } else { skipDigits(&rest) }
+    if first == "0" {
+        rest.removeFirst()
+        if let next = rest.first, isDigit(next) { return false }
+    } else {
+        skipDigits(&rest)
+    }
 
     var hasFraction = false
     var hasExponent = false
@@ -160,6 +165,9 @@ private func isDecimalFloat(_ s: String) -> Bool {
         hasExponent = true
     }
     return rest.isEmpty && (hasFraction || hasExponent)
+}
+private func isControlScalar(_ value: UInt32) -> Bool {
+    (0x00...0x1F).contains(value) || (0x7F...0x9F).contains(value)
 }
 
 private struct LineScanner {
@@ -317,6 +325,9 @@ private struct LineScanner {
             pos += 1
             if c == "\"" { return out }
             guard c == "\\" else {
+                guard !c.unicodeScalars.contains(where: { isControlScalar($0.value) }) else {
+                    throw fail("unescaped control character in string")
+                }
                 out.append(c)
                 continue
             }
