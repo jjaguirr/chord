@@ -62,6 +62,44 @@ private func expectRect(_ a: UnfoldRect, _ b: UnfoldRect, tol: Double = 1e-9) {
         #expect(a.step == 0)
     }
 
+    @Test func timerExpiryDuringShrinkEndsRunBeforeEaseCompletes() {
+        let clock = FakeClock()
+        var a = UnfoldAnimator(
+            config: UnfoldConfig(shrinkDuration: 0.3, stepDuration: 0.15, stepWindow: 0.1),
+            clock: clock
+        )
+        a.press(window: start, visibleFrame: screen)
+        clock.time += 0.15
+        let final = a.tick()!
+        #expect(a.phase == .idle)
+        #expect(final != target(0))
+        #expect(a.tick() == nil)
+        #expect(a.press(window: final, visibleFrame: screen) == final)
+        #expect(a.step == 0)
+        #expect(a.phase == .shrink)
+    }
+
+    @Test func smallScreenSkipsOversizedStopsAndStartsAtFirstFittingLandmark() {
+        let visible = UnfoldRect(x: 0, y: 0, width: 640, height: 480)
+        var (a, clock) = make()
+        a.press(window: start, visibleFrame: visible)
+        clock.time += 0.3
+        var current = a.tick()!
+        expectRelativelyClose(ratio(current), 4.0 / 3, relTol: 1e-9)
+        #expect(current.x >= 0 && current.y >= 0)
+        #expect(current.x + current.width <= visible.width)
+        #expect(current.y + current.height <= visible.height)
+        for _ in 1..<unfoldLandmarkRatios.count {
+            clock.time += 0.2
+            a.press(window: current, visibleFrame: visible)
+            clock.time += 0.15
+            current = a.tick()!
+            #expect(current.x >= 0 && current.y >= 0)
+            #expect(current.x + current.width <= visible.width)
+            #expect(current.y + current.height <= visible.height)
+        }
+    }
+
     @Test func pressesInsideWindowStepUpThroughAllSizes() {
         var (a, clock) = make()
         a.press(window: start, visibleFrame: screen)

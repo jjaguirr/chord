@@ -19,13 +19,12 @@ public protocol UnfoldClock {
     func now() -> Double
 }
 
-/// The landmark aspect ratios Unfold steps through after the A5 card (`t = 0`),
-/// as width / height: square, 4:3, 3:2, golden, and 16:9 (S2).
+/// The landmark aspect ratios on the Unfold path: square, 4:3, 3:2, golden,
+/// and 16:9 (S2), after the A5 card when it fits.
 public let unfoldLandmarkRatios: [Double] = [1, 4.0 / 3, 3.0 / 2, Unfold.phi, 16.0 / 9]
 
-/// The `t` of every Unfold stop on a screen: `[0, square, 4:3, 3:2, golden, 1]`.
-/// Each interior `t` is found by bisecting `frame()` for the landmark ratio on
-/// the segment S1 -> S2, where the ratio rises monotonically. Never hand-typed.
+/// The `t` values for fitting stops, starting at A5 when S1 fits S2.
+/// Interior values are found by bisecting `frame()` for each landmark ratio.
 public func unfoldStopTimes(screenW: Double, screenH: Double, margin: Double = 0) -> [Double] {
     var stops = [0.0]
     for target in unfoldLandmarkRatios.dropLast() {
@@ -42,22 +41,29 @@ public func unfoldStopTimes(screenW: Double, screenH: Double, margin: Double = 0
         stops.append((lo + hi) / 2)
     }
     stops.append(1)
-    return stops
+    let large = frame(Unfold.knot, screenW: screenW, screenH: screenH, margin: margin)
+    let full = frame(1, screenW: screenW, screenH: screenH, margin: margin)
+    let largeFits = large.w <= full.w && large.h <= full.h
+    return stops.filter { t in
+        let f = frame(t, screenW: screenW, screenH: screenH, margin: margin)
+        let fits = f.x >= -1e-9 && f.y >= -1e-9
+            && f.x + f.w <= screenW + 1e-9 && f.y + f.h <= screenH + 1e-9
+        return fits && (t != 0 || largeFits)
+    }
 }
 
 /// Timing for the Unfold move (issue #11).
 ///
 /// Unfold is a press-and-timer stepper, not an autonomous grow: the first press
-/// shrinks to the baby A5 size, every further press inside the timer window
-/// advances to the next landmark ratio on the `frame(t)` path
-/// (`unfoldStopTimes`), and an expired timer returns to idle.
+/// targets the smallest fitting stop (normally the baby A5 size), then each
+/// further press advances through the fitting landmark ratios until expiry.
 public struct UnfoldConfig: Equatable, Sendable {
     /// ASSUMPTION (captain will tune): time after a press in which another press
     /// steps up instead of resetting. Config key `unfold_step_window_ms` is
     /// wired later.
     public static let defaultStepWindow = 0.6
 
-    /// Current rect -> A5 (`frame(0)`) on the first press, seconds.
+    /// First-press ease to the smallest fitting stop, normally A5, seconds.
     public var shrinkDuration: Double
     /// Ease between two steps, seconds.
     public var stepDuration: Double
@@ -84,7 +90,7 @@ public struct UnfoldConfig: Equatable, Sendable {
 public enum UnfoldPhase: Equatable, Sendable {
     /// No timer running. The window keeps whatever size it has.
     case idle
-    /// First press: easing from the window's rect to A5.
+    /// First press: easing from the window's rect to the first fitting stop.
     case shrink
     /// A later press: easing to the next size.
     case step
@@ -99,12 +105,13 @@ public enum UnfoldPhase: Equatable, Sendable {
 /// state and is never read back from a window while the timer runs; only a
 /// press from `idle` takes the window's real rect.
 ///
-/// - Press from idle: ease from the window's rect to A5 (centered), start timer.
-/// - Press with the timer running: ease to the next size (clamped at the
+/// - Press from idle: ease from the window's rect to the first fitting stop,
+///   normally A5, and start the timer.
+/// - Press with the timer running: ease to the next fitting size (clamped at the
 ///   largest 16:9 that fits), restart timer. A press mid-ease retargets from the
 ///   interpolated rect, so there is only ever one animation.
 /// - Timer expiry with no press: back to idle, window stays where it is; the
-///   next press starts again at A5.
+///   next press starts again at the first fitting stop.
 ///
 /// Elapsed time, not tick count, decides the rect.
 public struct UnfoldAnimator {
@@ -114,7 +121,7 @@ public struct UnfoldAnimator {
     public private(set) var phase: UnfoldPhase = .idle
     /// Last rect this animator produced, or nil before the first press.
     public private(set) var currentRect: UnfoldRect?
-    /// Index of the landmark being eased to or rested at; 0 is the A5 card.
+    /// Index of the stop being eased to or rested at; 0 is the first fitting stop.
     public private(set) var step = 0
     /// Stop `t`s for the current screen, fixed when a sequence starts.
     private var stops: [Double] = [0]
@@ -178,12 +185,13 @@ public struct UnfoldAnimator {
 
     // MARK: Timeline
 
-    /// Updates `phase` for time `now`.
     private mutating func refresh(at now: Double) {
         guard phase != .idle else { return }
-        let easing = now - easeStart < easeDuration
-        if easing { return }
-        phase = now >= deadline ? .idle : .waiting
+        if now >= deadline {
+            phase = .idle
+        } else if now - easeStart >= easeDuration {
+            phase = .waiting
+        }
     }
 
     private func place(t: Double) -> UnfoldRect {
