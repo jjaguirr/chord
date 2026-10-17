@@ -15,15 +15,15 @@ enum ConfigFile {
         do {
             text = try String(contentsOf: fileURL, encoding: .utf8)
         } catch {
-            ActionLog.write("config: read failed: \(error.localizedDescription); using defaults")
+            ActionLog.live.write("config: read failed: \(error.localizedDescription); using defaults")
             return .defaults
         }
         let result = Config.load(text: text)
         if let first = result.diagnostics.first {
-            ActionLog.write(
+            ActionLog.live.write(
                 "config: \(result.diagnostics.count) problem(s), first at line \(first.line); using defaults")
         } else {
-            ActionLog.write("config: loaded")
+            ActionLog.live.write("config: loaded")
         }
         return result.config
     }

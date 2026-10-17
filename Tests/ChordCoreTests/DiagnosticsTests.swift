@@ -76,7 +76,7 @@ struct DiagnosticsTests {
         let wish = StandingWish(app: "Private Journal", size: .fullscreen)
         let config = Config(
             keys: .defaults, timing: .defaults, carry: .defaults, backend: .defaults,
-            standingWishes: [wish])
+            updates: .defaults, standingWishes: [wish])
         let lines = DiagnosticsReport.configLines(config).joined(separator: "\n")
         #expect(!lines.contains("Private Journal"))
         #expect(lines.contains("standing wishes: 1"))
@@ -87,7 +87,7 @@ struct DiagnosticsTests {
     func renderedReportPrivacy() {
         let config = Config(
             keys: .defaults, timing: .defaults, carry: .defaults, backend: .defaults,
-            standingWishes: [StandingWish(app: "Private Journal", size: .zoom)])
+            updates: .defaults, standingWishes: [StandingWish(app: "Private Journal", size: .zoom)])
         let text = DiagnosticsReport.render(
             chordVersion: "0.1.0", macOSVersion: "27.0", aerospaceVersion: "v0.21.3-Beta",
             aerospaceHealth: "not connected", accessibilityGranted: true, config: config,

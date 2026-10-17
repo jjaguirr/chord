@@ -23,6 +23,7 @@ enum DiagnosticsCollector {
     }
 
     static func render(
+        config: Config,
         logFileURL: URL = ActionLog.live.fileURL,
         crashReportsDirectory: URL = crashReportsDirectory
     ) -> String {
@@ -32,10 +33,10 @@ enum DiagnosticsCollector {
         return DiagnosticsReport.render(
             chordVersion: version,
             macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
-            aerospaceVersion: "\(Config.defaults.backend.aerospaceTag) (pinned)",
+            aerospaceVersion: "\(config.backend.aerospaceTag) (pinned)",
             aerospaceHealth: "not connected; no substrate is wired in this build",
             accessibilityGranted: AccessibilityPermission.isGranted,
-            config: Config.defaults,
+            config: config,
             crashReports: recentCrashReports(in: crashReportsDirectory).map(\.lastPathComponent),
             logLines: DiagnosticsReport.lastLines(of: log, limit: LogPolicy.diagnosticsLineCount))
     }

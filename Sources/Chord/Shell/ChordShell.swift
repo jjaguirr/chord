@@ -155,7 +155,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateCheckRunning = true
         UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
         refresh()
-        ActionLog.write("update check: started (\(manual ? "manual" : "background"))")
+        ActionLog.live.write("update check: started (\(manual ? "manual" : "background"))")
         let version = installedVersion
         Task {
             let result = await UpdateChecker.run(currentVersion: version)
@@ -169,14 +169,14 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch result {
         case .upToDate:
             availableRelease = nil
-            ActionLog.write("update check: up to date at \(current)")
+            ActionLog.live.write("update check: up to date at \(current)")
             if manual { showMessage("Chord is up to date", "You have \(current).") }
         case .available(let release):
             availableRelease = release
-            ActionLog.write("update check: \(release.tag) available; running \(current)")
+            ActionLog.live.write("update check: \(release.tag) available; running \(current)")
             if manual { presentUpdate(release) }
         case .failed(let reason):
-            ActionLog.write("update check: failed: \(reason)")
+            ActionLog.live.write("update check: failed: \(reason)")
             if manual { showMessage("Couldn't check for updates", reason) }
         }
         refresh()
@@ -194,10 +194,10 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.addButton(withTitle: "Open Download Page")
         alert.addButton(withTitle: "Not Now")
         guard alert.runModal() == .alertFirstButtonReturn else {
-            ActionLog.write("update check: download page not opened")
+            ActionLog.live.write("update check: download page not opened")
             return
         }
-        ActionLog.write("update check: opened download page for \(release.tag)")
+        ActionLog.live.write("update check: opened download page for \(release.tag)")
         NSWorkspace.shared.open(release.pageURL)
     }
 
@@ -256,7 +256,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func copyDiagnostics() {
         // Read-only: writes only the clipboard, which Chord does not own, so there is no
         // inverse to record. The copy itself is logged.
-        let text = DiagnosticsCollector.render()
+        let text = DiagnosticsCollector.render(config: config)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         ActionLog.live.write("diagnostics: copied to clipboard")
