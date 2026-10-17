@@ -267,7 +267,7 @@ private struct ConfigReader {
   }
 
   private func qualified(_ table: TOMLTable, _ key: String) -> String {
-    table.name.isEmpty ? key : "\(table.name).\(key)"
+    table.name == "standing_wishes" ? "\(table.name).\(key)" : key
   }
 
   private mutating func string(_ entry: TOMLEntry, key: String) -> String? {
