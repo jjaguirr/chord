@@ -52,10 +52,10 @@ open build/Chord.app
 requires the packaged `.app`. The shell adds a menu-bar item showing status
 (running, paused, or needs Accessibility permission), Pause/Resume, Launch at
 Login (off by default), Check for Updates… (a single GitHub Releases request;
-see the Privacy section of `docs/PRODUCT.md`), Open Log Folder (placeholder
-target until diagnostics lands), and Quit. Without Accessibility access it
-explains why, opens System Settings, and re-checks every second. Log lines go
-to `~/Library/Logs/Chord/chord.log`. See the Privacy section of
+see the Privacy section of `docs/PRODUCT.md`), Open Log Folder, Copy Diagnostics,
+and a Recent Crash Reports submenu. Without Accessibility access it explains why,
+opens System Settings, and re-checks every second. Log lines go to
+`~/Library/Logs/Chord/chord.log`. See the Privacy section of
 [`docs/PRODUCT.md`](docs/PRODUCT.md) for update-check behavior and configuration.
 The bundle id `com.example.chord` is a placeholder for the release issue.
 
@@ -67,6 +67,16 @@ checks that the test target compiles.
 
 Bootstrap steps 1–5 are complete; see [STATUS.md](docs/STATUS.md) for current
 progress.
+
+## Filing a bug
+
+Chord sends nothing anywhere. To report a problem:
+
+1. Open the Chord menu and choose **Copy Diagnostics**. It copies the Chord and macOS versions, the pinned AeroSpace version and health, Accessibility state, config as "defaults" or "customized" flags (no key bindings or app names), recent crash report file names, and the last 50 log lines.
+2. Paste it into a new GitHub issue.
+3. If **Recent Crash Reports** lists a report, choose it to reveal it in Finder and attach it to the issue by hand.
+
+The log is `~/Library/Logs/Chord/chord.log`; **Open Log Folder** shows it. It rotates at 1 MiB and keeps two older files. Place 4 and password-manager window titles are redacted. No current log line includes a window title.
 
 ## Docs
 

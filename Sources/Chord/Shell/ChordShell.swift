@@ -48,6 +48,8 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var installedVersion: String? {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
     }
+    private let crashMenu = NSMenu()
+    private let crashItem = NSMenuItem(title: "Recent Crash Reports", action: nil, keyEquivalent: "")
 
     private var status: ShellStatus {
         if !accessibilityGranted { return .needsPermission }
@@ -71,8 +73,10 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(loginItem)
         menu.addItem(availableUpdateItem)
         menu.addItem(checkUpdatesItem)
-        // Placeholder target: the log folder stands in until the diagnostics issue lands.
         menu.addItem(makeItem("Open Log Folder", #selector(openLogFolder)))
+        menu.addItem(makeItem("Copy Diagnostics", #selector(copyDiagnostics)))
+        crashItem.submenu = crashMenu
+        menu.addItem(crashItem)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit Chord", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
@@ -99,6 +103,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         checkAccessibility()
         refresh()
+        refreshCrashReports()
     }
 
     private func makeItem(_ title: String, _ action: Selector) -> NSMenuItem {
@@ -246,6 +251,35 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func openLogFolder() {
         ActionLog.write("log folder: opened")
         NSWorkspace.shared.open(ActionLog.directory)
+    }
+
+    @objc private func copyDiagnostics() {
+        // Read-only: writes only the clipboard, which Chord does not own, so there is no
+        // inverse to record. The copy itself is logged.
+        let text = DiagnosticsCollector.render()
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        ActionLog.write("diagnostics: copied to clipboard")
+    }
+
+    private func refreshCrashReports() {
+        crashMenu.removeAllItems()
+        let reports = DiagnosticsCollector.recentCrashReports()
+        if reports.isEmpty {
+            crashMenu.addItem(NSMenuItem(title: "None found", action: nil, keyEquivalent: ""))
+            return
+        }
+        for url in reports {
+            let item = makeItem(url.lastPathComponent, #selector(revealCrashReport(_:)))
+            item.representedObject = url
+            crashMenu.addItem(item)
+        }
+    }
+
+    @objc private func revealCrashReport(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        ActionLog.write("crash report: revealed \(url.lastPathComponent)")
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     @objc private func toggleLaunchAtLogin() {
