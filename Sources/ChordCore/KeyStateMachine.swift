@@ -1,12 +1,11 @@
 /// Physical key positions interpreted by the pure key state machine.
-public enum ChordKey: Hashable, Sendable { case h, j, k, l, zero, escape }
+public enum ChordKey: Hashable, Sendable { case h, j, k, l, r, zero, escape }
 
 public struct KeyModifiers: Equatable, Sendable {
-  public var control: Bool
   public var shift: Bool
+  /// Option/Alt. Ctrl is never a Chord modifier.
   public var mod: Bool
-  public init(control: Bool = false, shift: Bool = false, mod: Bool = false) {
-    self.control = control
+  public init(shift: Bool = false, mod: Bool = false) {
     self.shift = shift
     self.mod = mod
   }
@@ -64,6 +63,8 @@ public struct KeyStateMachine: Sendable {
 
   public let configuration: Configuration
   private var downKeys: Set<ChordKey> = []
+  /// Set by Option+R; cleared when R is released. While set, Option+hjkl reshapes.
+  private var reshapeArmed = false
   private var chargeStarted: Double?
   private var spreadStarted = false
   private var pendingDirection: (key: ChordKey, at: Double)?
@@ -79,6 +80,10 @@ public struct KeyStateMachine: Sendable {
     switch input {
     case .down(let key, let isRepeat, let modifiers):
       guard !isRepeat, downKeys.insert(key).inserted else { return [] }
+      if key == .r {
+        reshapeArmed = modifiers.mod
+        return []
+      }
       if key == .zero {
         guard modifiers.mod else { return [] }
         chargeStarted = time
@@ -91,7 +96,7 @@ public struct KeyStateMachine: Sendable {
         return [.abortCharge]
       }
       guard direction(key) != nil else { return [] }
-      if modifiers.control {
+      if reshapeArmed && modifiers.mod {
         let (aspect, area) = reshapeDeltas(for: key)
         return [.reshape(aspectDelta: aspect, areaDelta: area)]
       }
@@ -119,6 +124,7 @@ public struct KeyStateMachine: Sendable {
       return result
     case .up(let key, _):
       guard downKeys.remove(key) != nil else { return [] }
+      if key == .r { reshapeArmed = false }
       if key == .zero, let started = chargeStarted {
         chargeStarted = nil
         if !spreadStarted && time - started >= configuration.holdThreshold {

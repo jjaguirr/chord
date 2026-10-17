@@ -16,7 +16,7 @@ it is.
    *standing wish*; that is still the user's decision, stored as a rule.
 2. **Places, not app groups.** Workspaces answer "what is this for."
 3. **One grammar, escalating consequence.** `hjkl` are directions;
-   modifiers set how much a keystroke changes — look, carry, reshape.
+   modifiers set how much a keystroke changes — look, carry, reshape (hold `Mod+R`, then `hjkl`).
    `Shift` always means "take this with you."
 4. **Preview, then commit.** Nothing moves until you commit.
 5. **Predictable by construction.** Decisions are pure functions of window

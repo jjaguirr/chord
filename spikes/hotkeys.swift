@@ -5,7 +5,7 @@ import Carbon
 import Foundation
 
 let option0 = Int64(kVK_ANSI_0)
-struct CtrlTrial {
+struct OptionTrial {
   let context: String
   let key: String
   let code: Int64
@@ -13,19 +13,20 @@ struct CtrlTrial {
 }
 let terminalBundle = "com.apple.Terminal"
 let iTermBundle = "com.googlecode.iterm2"
-let ctrlTrials = [
-  CtrlTrial(context: "Terminal", key: "h", code: Int64(kVK_ANSI_H), bundleIDs: [terminalBundle]),
-  CtrlTrial(context: "Terminal", key: "j", code: Int64(kVK_ANSI_J), bundleIDs: [terminalBundle]),
-  CtrlTrial(context: "Terminal", key: "k", code: Int64(kVK_ANSI_K), bundleIDs: [terminalBundle]),
-  CtrlTrial(context: "Terminal", key: "l", code: Int64(kVK_ANSI_L), bundleIDs: [terminalBundle]),
-  CtrlTrial(context: "iTerm", key: "h", code: Int64(kVK_ANSI_H), bundleIDs: [iTermBundle]),
-  CtrlTrial(context: "iTerm", key: "j", code: Int64(kVK_ANSI_J), bundleIDs: [iTermBundle]),
-  CtrlTrial(context: "iTerm", key: "k", code: Int64(kVK_ANSI_K), bundleIDs: [iTermBundle]),
-  CtrlTrial(context: "iTerm", key: "l", code: Int64(kVK_ANSI_L), bundleIDs: [iTermBundle]),
+let optionTrials = [
+  OptionTrial(context: "Terminal", key: "h", code: Int64(kVK_ANSI_H), bundleIDs: [terminalBundle]),
+  OptionTrial(context: "Terminal", key: "j", code: Int64(kVK_ANSI_J), bundleIDs: [terminalBundle]),
+  OptionTrial(context: "Terminal", key: "k", code: Int64(kVK_ANSI_K), bundleIDs: [terminalBundle]),
+  OptionTrial(context: "Terminal", key: "l", code: Int64(kVK_ANSI_L), bundleIDs: [terminalBundle]),
+  OptionTrial(context: "iTerm", key: "h", code: Int64(kVK_ANSI_H), bundleIDs: [iTermBundle]),
+  OptionTrial(context: "iTerm", key: "j", code: Int64(kVK_ANSI_J), bundleIDs: [iTermBundle]),
+  OptionTrial(context: "iTerm", key: "k", code: Int64(kVK_ANSI_K), bundleIDs: [iTermBundle]),
+  OptionTrial(context: "iTerm", key: "l", code: Int64(kVK_ANSI_L), bundleIDs: [iTermBundle]),
 
 ]
-var currentCtrlTrial: CtrlTrial?
-var ctrlTrialHit = false
+var currentOptionTrial: OptionTrial?
+var optionTrialHit = false
+var optionRSeen = false
 var carbonCount = 0
 var optionCount = 0
 var registration: EventHotKeyRef?
@@ -86,12 +87,13 @@ guard
         optionCount += 1
         if !carbonMode { return nil }
       }
-      if let trial = currentCtrlTrial,
+      if code == Int64(kVK_ANSI_R) && event.flags.contains(.maskAlternate) { optionRSeen = true }
+      if let trial = currentOptionTrial, optionRSeen,
         code == trial.code,
-        event.flags.contains(.maskControl),
+        event.flags.contains(.maskAlternate),
         trial.bundleIDs.contains(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "")
       {
-        ctrlTrialHit = true
+        optionTrialHit = true
       }
       return Unmanaged.passUnretained(event)
     }, userInfo: nil)
@@ -124,7 +126,7 @@ guard leakageWindow.makeFirstResponder(leakageField) else {
 }
 let label = carbonMode ? "Carbon" : "CGEventTap fallback"
 print(
-  "\(label): click the disposable text field, press Option+0 once, then press Return in this terminal. Next complete each prompted Ctrl trial. Vim-in-Terminal/iTerm trials are manual and cannot be verified by this probe."
+  "\(label): click the disposable text field, press Option+0 once, then press Return in this terminal. Next complete each prompted trial: Option+h/j/k/l, and the Option+R hold (hold Option+R, then press h/j/k/l). Vim-in-Terminal/iTerm trials are manual and cannot be verified by this probe."
 )
 DispatchQueue.global().async {
   _ = readLine()
@@ -141,23 +143,24 @@ guard optionCount >= 1, !carbonMode || carbonCount >= 1 else {
     "\(label) missed Option+0; Option+0 \(optionCount), Carbon callback \(carbonCount)",
     "retry both modes and verify Option+0 is captured before insertion")
 }
-for trial in ctrlTrials {
-  currentCtrlTrial = trial
-  ctrlTrialHit = false
-  print("Test Ctrl+\(trial.key) in \(trial.context), then press Return here.")
+for trial in optionTrials {
+  currentOptionTrial = trial
+  optionTrialHit = false
+  optionRSeen = false
+  print("Test Option+\(trial.key) while holding Option+R in \(trial.context), then press Return here.")
   finished = false
   DispatchQueue.global().async {
     _ = readLine()
     DispatchQueue.main.async { finished = true }
   }
   while !finished { _ = CFRunLoopRunInMode(.defaultMode, 0.05, true) }
-  guard ctrlTrialHit else {
+  guard optionTrialHit else {
     fail(
-      "\(label) missed Ctrl+\(trial.key) in \(trial.context)",
+      "\(label) missed Option+R then Option+\(trial.key) in \(trial.context)",
       "retry this physical key in the named environment; complete every prompted trial")
   }
 }
 leakageWindow.close()
 print(
-  "PASS: \(label) captured Option+0 without text leakage and every physical Ctrl+h/j/k/l trial in Terminal and iTerm; Vim-in-Terminal/iTerm remain manual and unverified"
+  "PASS: \(label) captured Option+0 without text leakage and every physical Option+h/j/k/l trial (with the Option+R hold) in Terminal and iTerm; Vim-in-Terminal/iTerm remain manual and unverified"
 )
