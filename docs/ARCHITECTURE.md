@@ -13,12 +13,13 @@ behavior is not yet validated. Chord reads window geometry itself. See the
 
 | Module | Pure? | Job |
 |---|---|---|
-| InputLayer | no | Registered Carbon hotkeys; CGEventTap fallback for keys Carbon cannot register, and a passive Carbon cross-check that only logs (`Sources/Chord/Input`). Behind a `HotkeySource` protocol; feeds KeyStateMachine and logs intents. Wires no windows yet |
+| InputLayer | no | Registered Carbon hotkeys; CGEventTap fallback for keys Carbon cannot register, and a passive Carbon cross-check that only logs (`Sources/Chord/Input`). Behind a `HotkeySource` protocol; feeds KeyStateMachine, logs intents, and hands them to WindowMotion |
+| WindowMotion | no | Turns captured intents into Executor calls: Unfold stepper timing (elapsed-time frame skipping), Reshape, Carry, place keys (`Sources/Chord/Motion`). Makes no window call itself |
 | KeyStateMachine | yes | Timestamped tap/hold, directional chords, carry ramp, reshape intents |
 | Picker | yes | Rects + direction vector → target window |
 | Unfold | yes | Pure `frame()` geometry and press/timer state machine |
 | Spread | no | View mode with remembered frames |
-| WorkspaceBackend | no | Replaceable substrate protocol; PR1 provides a deterministic fake |
+| WorkspaceBackend | no | Replaceable substrate protocol; a deterministic fake and `AXWindowBackend` (Accessibility only: focused window, no places; AX writes are `Executor/AXWindowWriter`). Per-frame motion never goes through AeroSpace (spike 6) |
 | Executor | no | The only component allowed to change windows (`Sources/Chord/Executor`) |
 | ChordShell | no | Menu-bar status, pause, permission, launch-at-login, update, and diagnostics controls; no window operations. Update implementation is in `Sources/Chord/Update` |
 | Agents | no | Files emitting typed plans |

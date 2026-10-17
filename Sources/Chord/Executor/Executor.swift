@@ -51,6 +51,24 @@ public enum ExecutorError: Error, Equatable, Sendable {
     case nothingToUndo
     /// No visible frame was supplied and no monitor contains the window.
     case noVisibleFrame
+    /// The backend reports no focused window to act on.
+    case noFocusedWindow
+    /// A frame step arrived with no frame run begun.
+    case noFrameRun
+}
+
+/// The focused window as the backend reported it, with the visible frame of the
+/// monitor that holds it. Both are in the backend's screen coordinates.
+public struct WindowContext: Equatable, Sendable {
+    public let id: Int
+    public let bounds: ScreenRect
+    public let visibleFrame: ScreenRect
+
+    public init(id: Int, bounds: ScreenRect, visibleFrame: ScreenRect) {
+        self.id = id
+        self.bounds = bounds
+        self.visibleFrame = visibleFrame
+    }
 }
 
 extension ScreenRect {
@@ -74,6 +92,19 @@ public actor Executor {
     private let logSink: (@Sendable (String) -> Void)?
 
     private let backend: any WorkspaceBackend
+
+    /// An open run of frames for one window (Unfold). Steps are applied without a
+    /// snapshot and without a log line each; the run closes as one undoable change.
+    private struct FrameRun {
+        let label: String
+        let id: Int
+        let start: ScreenRect
+        var last: ScreenRect
+    }
+    private var frameRun: FrameRun?
+    /// The window of the last carry step and the undo depth right after it. A carry
+    /// held down extends that one undo entry instead of adding a hundred.
+    private var carryRun: (id: Int, depth: Int)?
     private var undoStack: [[Change]] = []
     /// Window ids, least to most recently focused. Per-workspace history is this
     /// list filtered by each window's current place.
@@ -176,14 +207,138 @@ public actor Executor {
         return applied
     }
 
-    private static func monitorBounds(holding rect: ScreenRect, in snapshot: BackendSnapshot) -> ScreenRect? {
-        let cx = rect.x + rect.width / 2
-        let cy = rect.y + rect.height / 2
-        let holding = snapshot.monitors.first {
-            $0.bounds.x <= cx && cx < $0.bounds.x + $0.bounds.width
-                && $0.bounds.y <= cy && cy < $0.bounds.y + $0.bounds.height
+    /// `reshape` on the focused window.
+    @discardableResult
+    public func reshapeFocused(
+        aspectDelta: Double, areaDelta: Double, minimumSize: ActionSize
+    ) async throws -> [Change] {
+        let context = try await focusedWindowContext()
+        return try await reshape(
+            context.id, aspectDelta: aspectDelta, areaDelta: areaDelta,
+            minimumSize: minimumSize, visibleFrame: context.visibleFrame)
+    }
+
+    // MARK: Focused-window motion
+
+    /// The focused window and its monitor's visible frame, read fresh from the backend.
+    public func focusedWindowContext() async throws -> WindowContext {
+        let snapshot = try await backend.snapshot()
+        return try Self.focusedContext(in: snapshot).context
+    }
+
+    private static func focusedContext(in snapshot: BackendSnapshot) throws -> (window: WindowSnapshot, context: WindowContext) {
+        guard let focused = snapshot.focusedWindow,
+            let window = snapshot.windows.first(where: { $0.id == focused })
+        else { throw ExecutorError.noFocusedWindow }
+        guard let visible = monitorBounds(holding: window.bounds, in: snapshot) else {
+            throw ExecutorError.noVisibleFrame
         }
-        return (holding ?? snapshot.monitors.first(where: \.isPrimary) ?? snapshot.monitors.first)?.bounds
+        return (window, WindowContext(id: window.id.rawValue, bounds: window.bounds, visibleFrame: visible))
+    }
+
+    /// Opens a frame run on the focused window and returns where it stands. A run
+    /// still open is closed first. Only a caller that animates a size the user asked
+    /// for (Unfold) may use this.
+    public func beginFrameRun(label: String) async throws -> WindowContext {
+        endFrameRun()
+        let context = try await focusedWindowContext()
+        frameRun = FrameRun(label: label, id: context.id, start: context.bounds, last: context.bounds)
+        return context
+    }
+
+    /// Applies one frame of the open run: rounded, skipped when it equals the last
+    /// applied frame, never preceded by a snapshot. If the backend fails, the run
+    /// still counts the frame as applied so that undo restores the start.
+    public func stepFrameRun(to frame: ScreenRect) async throws {
+        guard let run = frameRun else { throw ExecutorError.noFrameRun }
+        let target = frame.roundedToIntegers()
+        guard target != run.last else { return }
+        do {
+            try await backend.applyFrame(WindowID(run.id), to: target)
+        } catch {
+            appendLog("failed: \(run.label) step on window \(run.id): \(error)")
+            frameRun?.last = target
+            throw error
+        }
+        frameRun?.last = target
+    }
+
+    /// Closes the open run as one undoable frame change from where it began to where
+    /// it ended, with one log line. Returns `[]` when there was no run or it ended
+    /// where it began.
+    @discardableResult
+    public func endFrameRun() -> [Change] {
+        guard let run = frameRun else { return [] }
+        frameRun = nil
+        guard run.last != run.start else {
+            appendLog("\(run.label): window \(run.id) ended where it began")
+            return []
+        }
+        let change = Change.frame(windowID: run.id, from: run.start, to: run.last)
+        appendLog("\(run.label): \(change.logLine)")
+        undoStack.append([change])
+        return [change]
+    }
+
+    /// Moves the focused window by `(dx, dy)` points without changing its size. A
+    /// step never pushes the window further out past an edge of its visible frame,
+    /// though it never pulls a window the user put off-screen back either. Held
+    /// carry steps extend one undo entry.
+    @discardableResult
+    public func carry(dx: Double, dy: Double) async throws -> [Change] {
+        let snapshot = try await backend.snapshot()
+        let (window, context) = try Self.focusedContext(in: snapshot)
+        let bounds = context.bounds
+        let visible = context.visibleFrame
+        let target = ScreenRect(
+            x: Self.carried(bounds.x, by: dx, size: bounds.width, low: visible.x, high: visible.x + visible.width),
+            y: Self.carried(bounds.y, by: dy, size: bounds.height, low: visible.y, high: visible.y + visible.height),
+            width: bounds.width, height: bounds.height
+        ).roundedToIntegers()
+        guard target != bounds else { return [] }
+
+        let plan = try Plan(assignments: [])
+        let action = Action.frame(windowID: context.id, from: bounds.actionRect, to: target.actionRect)
+        let planned = changes(from: try plan.actions(from: [context.id: window.place], requested: [action]))
+        guard !planned.isEmpty else { return [] }
+        let applied = try await run(planned)
+
+        if let tail = carryRun, tail.id == context.id, tail.depth == undoStack.count,
+            undoStack.last?.count == 1,
+            case .frame(_, let origin, let previousEnd)? = undoStack.last?.first, previousEnd == bounds,
+            case .frame(_, _, let end)? = applied.last
+        {
+            undoStack[undoStack.count - 1] = [.frame(windowID: context.id, from: origin, to: end)]
+        } else if !applied.isEmpty {
+            undoStack.append(applied)
+        }
+        carryRun = (context.id, undoStack.count)
+        return applied
+    }
+
+    /// `origin` moved by `delta`, held inside `low...high` only in the direction of travel.
+    private static func carried(_ origin: Double, by delta: Double, size: Double, low: Double, high: Double) -> Double {
+        let moved = origin + delta
+        if delta > 0 { return min(moved, max(origin, high - size)) }
+        if delta < 0 { return max(moved, min(origin, low)) }
+        return origin
+    }
+
+    /// Moves the focused window to `place`. A backend without places logs it and
+    /// leaves the window alone, returning `[]`.
+    @discardableResult
+    public func placeFocused(_ place: Place) async throws -> [Change] {
+        guard backend.supportsPlaces else {
+            appendLog("place: this backend has no places; window left alone")
+            return []
+        }
+        let context = try await focusedWindowContext()
+        let plan = try Plan(assignments: [Assignment(windowID: context.id, place: place, reason: .pinned)])
+        return try await apply(plan)
+    }
+
+    private static func monitorBounds(holding rect: ScreenRect, in snapshot: BackendSnapshot) -> ScreenRect? {
+        ScreenGeometry.visibleFrame(holding: rect, monitors: snapshot.monitors)
     }
 
     /// Restores a remembered place and frame as one undoable transaction.

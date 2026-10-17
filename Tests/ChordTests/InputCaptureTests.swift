@@ -448,6 +448,43 @@ struct InputCaptureTests {
         #expect(h.log.has("restarting: xxx"))
     }
 
+    // MARK: Handlers
+
+    @Test func intentHandlerReceivesWhatTheMachineProducesAfterTheLogLine() {
+        let h = Harness()
+        let received = HandlerBox()
+        h.capture.intentHandler = { received.intents.append(contentsOf: $0) }
+        h.at(0)
+        h.carbon.send("Digit0")
+        h.at(0.1)
+        h.carbon.send("Digit0", .up)
+        h.carbon.send("KeyL", shift: true)
+
+        #expect(received.intents == [.unfold, .carry(dx: 10, dy: 0)])
+    }
+
+    @Test func timerIntentsReachTheHandler() {
+        let h = Harness()
+        let received = HandlerBox()
+        h.capture.intentHandler = { received.intents.append(contentsOf: $0) }
+        h.at(0)
+        h.carbon.send("Digit0")
+        h.advance(to: 0.7)
+
+        #expect(received.intents == [.spread])
+    }
+
+    @Test func placeHandlerSeesOnlyPlaceKeyDowns() {
+        let h = Harness()
+        let received = HandlerBox()
+        h.capture.placeHandler = { received.places.append($0) }
+        h.carbon.send("Digit3", shift: true)
+        h.carbon.send("Digit3", shift: true, .up)
+        h.carbon.send("KeyH")
+
+        #expect(received.places.map(\.label) == ["Option+Shift+3"])
+    }
+
     // MARK: Status text
 
     @Test func renderNamesEveryKeyItsStatusAndTheCounters() {
@@ -466,4 +503,9 @@ struct InputCaptureTests {
         #expect(text.contains("input: down Option+H path=tap"))
         #expect(!text.contains("executor: moved window 1"))
     }
+}
+
+private final class HandlerBox {
+    var intents: [KeyIntent] = []
+    var places: [HotkeyBinding] = []
 }

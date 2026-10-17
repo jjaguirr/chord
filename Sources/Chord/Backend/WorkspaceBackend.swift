@@ -97,6 +97,9 @@ public enum BackendError: Error, Equatable, Sendable {
     /// arrived. The substrate may or may not have changed. Re-read the snapshot
     /// before acting again; never assume either outcome.
     case unknown(reason: String)
+    /// The substrate has no such operation (for example places on a plain Accessibility
+    /// backend). Nothing changed; callers log it and leave the window alone.
+    case unsupported(String)
 }
 
 /// The one boundary to the workspace substrate. Only `Sources/Chord/Executor/`
@@ -105,6 +108,11 @@ public enum BackendError: Error, Equatable, Sendable {
 /// Mutations return the state they replaced so the Executor can record an
 /// inverse for every action it applies.
 public protocol WorkspaceBackend: Sendable {
+    /// Whether `moveWindow` can do anything. A backend with no workspaces of its own
+    /// (plain Accessibility) says false, and callers log and leave the window instead
+    /// of calling it.
+    var supportsPlaces: Bool { get }
+
     func snapshot() async throws -> BackendSnapshot
 
     /// Moves a window to another place and returns the place it left.

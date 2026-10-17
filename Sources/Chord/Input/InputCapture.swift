@@ -1,9 +1,9 @@
 import ChordCore
 import Foundation
 
-/// Screen geometry handed to the `KeyStateMachine` for carry edge-magnets. Until the
-/// Executor slice supplies the focused window, carry intents are computed against a
-/// stand-in rectangle.
+/// Screen geometry handed to the `KeyStateMachine` for carry edge-magnets: the focused
+/// window and its monitor's edges (`FocusedGeometry`). The stand-in rectangle is only the
+/// answer when no focused window can be read.
 struct InputGeometry: Equatable {
     var rect: PickerRect
     var edges: KeyStateMachine.Edges
@@ -22,7 +22,8 @@ struct InputGeometry: Equatable {
 
 /// Takes events from the Carbon and event-tap sources, decides which path owns each
 /// hotkey, feeds the `KeyStateMachine`, and logs every event with the path that caught it.
-/// It makes no window call: intents are logged, not executed.
+/// It makes no window call: intents go to `intentHandler` and place keys to `placeHandler`
+/// (`WindowMotion`, then the Executor).
 ///
 /// Ownership: a hotkey Carbon registered is owned by Carbon; one it refused is owned by
 /// the tap. The tap also watches Carbon-owned keys without consuming them. If the tap
@@ -70,6 +71,14 @@ final class InputCapture: HotkeySourceDelegate {
     /// Called when the capture starts or stops needing `tick()` (a key is down or a tap press
     /// awaits Carbon's confirmation). The app runs a timer only while this is true.
     var tickRequest: ((Bool) -> Void)?
+
+    /// Receives every non-empty batch of intents the state machine produces, after the
+    /// event is logged. The app wires it to `WindowMotion`; without a handler nothing moves.
+    var intentHandler: (([KeyIntent]) -> Void)?
+
+    /// Receives the key-down of every place binding (Option[+Shift]+1-9 and the
+    /// configured tier/vault keys). Place keys have no state-machine input.
+    var placeHandler: ((HotkeyBinding) -> Void)?
 
     init(
         config: Config,
@@ -198,6 +207,7 @@ final class InputCapture: HotkeySourceDelegate {
         if !intents.isEmpty {
             counters.intents += intents.count
             log("input: timer intent=\(Self.describe(intents))")
+            intentHandler?(intents)
         }
         updateTickRequest()
     }
@@ -313,6 +323,7 @@ final class InputCapture: HotkeySourceDelegate {
             counters.tapEvents += 1
             counters.intents += intents.count
             log("input: \(event.phase == .down ? "down" : "up") Esc path=tap role=abort intent=\(Self.describe(intents))")
+            intentHandler?(intents)
         }
         return .passThrough
     }
@@ -357,6 +368,8 @@ final class InputCapture: HotkeySourceDelegate {
         counters.intents += intents.count
         log("input: \(phase == .down ? "down" : "up") \(binding.label) path=\(path.rawValue) "
             + "role=\(binding.role.name) intent=\(Self.describe(intents))\(note.map { " (\($0))" } ?? "")")
+        if !intents.isEmpty { intentHandler?(intents) }
+        if binding.role == .place, phase == .down { placeHandler?(binding) }
     }
 
     private func updateTickRequest() {
