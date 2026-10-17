@@ -39,4 +39,4 @@ pins -> app rules -> memory -> bench. The model layer is post-v1. The Sorter emi
 
 ## Per-place configuration
 
-Per-place TOML templates (default layout, default apps, float/tile behavior, permitted agents) are post-v1. v1 config (C12) holds only the key bindings, thresholds (hold 700 ms, A5 hold 200 ms, chord window) and standing wishes.
+Per-place TOML templates (default layout, default apps, float/tile behavior, permitted agents) are post-v1. v1 config (C12) holds key bindings, timing thresholds (hold, tap, chord window, A5 hold, and Unfold step window), carry ramp and edge-magnet settings, the pinned AeroSpace tag, and standing wishes. Config errors yield defaults for the whole file; it has no agent settings, and only `fullscreen` or `zoom` standing wishes can request size changes.
