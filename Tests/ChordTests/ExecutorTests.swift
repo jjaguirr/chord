@@ -472,4 +472,57 @@ struct ExecutorTests {
                 99, aspectDelta: 0, areaDelta: 0.05, minimumSize: minimum, visibleFrame: visible)
         }
     }
+
+    @Test func controlHJKLIntentsTranslateAndApplyAsUndoableActions() async throws {
+        let cases: [(ChordKey, Double, Double)] = [
+            (.h, -0.05, 0), (.j, 0, 0.05), (.k, 0, -0.05), (.l, 0.05, 0),
+        ]
+        let pickerRect = PickerRect(x: 100, y: 100, width: 400, height: 300)
+        let edges = KeyStateMachine.Edges(left: 0, right: 1000, top: 0, bottom: 800)
+        let modifiers = KeyModifiers(control: true)
+
+        for (key, expectedAspect, expectedArea) in cases {
+            var machine = KeyStateMachine()
+            let intents = machine.process(
+                .down(key, repeat: false, modifiers: modifiers),
+                at: 0, rect: pickerRect, edges: edges)
+            let intent = try #require(intents.first)
+            let source = ActionRect(x: start.x, y: start.y, width: start.width, height: start.height)
+            let target = try #require(
+                reshapeAction(
+                    for: intent, windowID: 1, from: source,
+                    within: ActionRect(x: visible.x, y: visible.y, width: visible.width, height: visible.height),
+                    minimumSize: minimum))
+            guard case .reshape(_, let aspectDelta, let areaDelta, let from, let to) = target else {
+                Issue.record("expected a translated reshape action")
+                continue
+            }
+            #expect(aspectDelta == expectedAspect)
+            #expect(areaDelta == expectedArea)
+            #expect(from == source)
+
+            let backend = reshapeBackend()
+            let executor = Executor(backend: backend)
+            let plan = try Plan(assignments: [])
+            let applied = try await executor.apply(plan, requested: [target])
+            #expect(applied == [
+                .reshape(
+                    windowID: 1, aspectDelta: expectedAspect, areaDelta: expectedArea,
+                    from: start, to: ScreenRect(x: to.x, y: to.y, width: to.width, height: to.height))
+            ])
+            #expect(try await bounds(backend) == ScreenRect(x: to.x, y: to.y, width: to.width, height: to.height))
+
+            try await executor.undo()
+            #expect(try await bounds(backend) == start)
+        }
+    }
+
+    @Test func reshapeTranslatorIgnoresOtherIntents() {
+        #expect(
+            reshapeAction(
+                for: .unfold, windowID: 1,
+                from: ActionRect(x: 0, y: 0, width: 400, height: 300),
+                within: ActionRect(x: 0, y: 0, width: 1000, height: 800),
+                minimumSize: minimum) == nil)
+    }
 }

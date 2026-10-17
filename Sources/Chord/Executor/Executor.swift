@@ -92,12 +92,14 @@ public actor Executor {
 
     // MARK: Plans
 
-    /// Applies `plan` and optional explicit `frames` as one undoable step. Throws
-    /// `PlanError.unknownWindow` before changing anything if any named window is
-    /// not in the backend's snapshot. If a backend call fails midway, the changes
-    /// already applied stay on the undo stack and the error is rethrown.
+    /// Applies `plan`, optional explicit `frames`, and typed `requested` actions as
+    /// one undoable step. Throws `PlanError.unknownWindow` before changing anything
+    /// if any named window is not in the backend's snapshot. If a backend call fails
+    /// midway, the changes already applied stay on the undo stack and the error is rethrown.
     @discardableResult
-    public func apply(_ plan: Plan, frames: [Int: ScreenRect] = [:]) async throws -> [Change] {
+    public func apply(
+        _ plan: Plan, frames: [Int: ScreenRect] = [:], requested requestedActions: [Action] = []
+    ) async throws -> [Change] {
         let snapshot = try await backend.snapshot()
         let known = Set(snapshot.windows.map(\.id.rawValue))
         try plan.validate(knownWindows: known)
@@ -112,13 +114,13 @@ public actor Executor {
             bounds[window.id.rawValue] = window.bounds
         }
 
-        let requested = frames.keys.sorted().compactMap { id -> Action? in
+        let frameActions = frames.keys.sorted().compactMap { id -> Action? in
             guard let current = bounds[id], let frame = frames[id] else { return nil }
             let target = frame.roundedToIntegers()
             guard current != target else { return nil }
             return .frame(windowID: id, from: current.actionRect, to: target.actionRect)
         }
-        let actions = try plan.actions(from: model, requested: requested)
+        let actions = try plan.actions(from: model, requested: frameActions + requestedActions)
         let planned = changes(from: actions)
         let applied = try await run(planned)
         if !applied.isEmpty { undoStack.append(applied) }
@@ -162,13 +164,11 @@ public actor Executor {
         guard let visible = visibleFrame ?? Self.monitorBounds(holding: window.bounds, in: snapshot) else {
             throw ExecutorError.noVisibleFrame
         }
-        let to = reshapedFrame(
-            window.bounds.actionRect, aspectDelta: aspectDelta, areaDelta: areaDelta,
+        guard let action = reshapeAction(
+            for: .reshape(aspectDelta: aspectDelta, areaDelta: areaDelta),
+            windowID: id, from: window.bounds.actionRect,
             within: visible.actionRect, minimumSize: minimumSize)
-        guard to.screenRect != window.bounds else { return [] }
-        let action = Action.reshape(
-            windowID: id, aspectDelta: aspectDelta, areaDelta: areaDelta,
-            from: window.bounds.actionRect, to: to)
+        else { return [] }
         let plan = try Plan(assignments: [])
         let planned = changes(from: try plan.actions(from: [id: window.place], requested: [action]))
         let applied = try await run(planned)

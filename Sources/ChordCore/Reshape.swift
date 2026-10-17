@@ -41,6 +41,21 @@ public func reshapedFrame(
     let y = clamp((centerY - height / 2).rounded(), low: visible.y.rounded(.up), high: (visible.y + visible.height).rounded(.down) - height)
     return ActionRect(x: x, y: y, width: width, height: height)
 }
+/// Converts a reshape intent into the reversible typed action the Executor applies.
+/// Returns `nil` for intents that do not request a reshape or cannot change the frame.
+public func reshapeAction(
+    for intent: KeyIntent, windowID: Int, from rect: ActionRect,
+    within visible: ActionRect, minimumSize: ActionSize
+) -> Action? {
+    guard case .reshape(let aspectDelta, let areaDelta) = intent else { return nil }
+    let to = reshapedFrame(
+        rect, aspectDelta: aspectDelta, areaDelta: areaDelta,
+        within: visible, minimumSize: minimumSize)
+    guard to != rect else { return nil }
+    return .reshape(
+        windowID: windowID, aspectDelta: aspectDelta, areaDelta: areaDelta,
+        from: rect, to: to)
+}
 
 /// `value` limited to `low...high`; `high` wins when the range is empty.
 private func clamp(_ value: Double, low: Double, high: Double) -> Double {
