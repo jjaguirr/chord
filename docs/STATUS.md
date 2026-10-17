@@ -53,7 +53,7 @@ plus Rectangle, we stop and write down why.
 
 | C6 spike | Result |
 |---|---|
-| Window IDs across apps | Not run: AeroSpace server disabled; no multi-app sample |
+| Window IDs across apps | Not run: no multi-app sample |
 | AX frame survival | Not run: no disposable app/window fixture |
 | Global hotkeys | Not run: Terminal/iTerm/Vim fixtures absent; Vim-specific behavior is manual and unverified by the probe |
 | Window birth size | Not run: no fresh-window fixture |
