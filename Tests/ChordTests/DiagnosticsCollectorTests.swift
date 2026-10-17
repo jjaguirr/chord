@@ -1,3 +1,4 @@
+import ChordCore
 import Foundation
 import Testing
 @testable import Chord
