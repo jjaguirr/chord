@@ -31,6 +31,7 @@ struct WindowMotionTests {
     private let visible = ScreenRect(x: 0, y: 25, width: 1440, height: 875)
     private let start = ScreenRect(x: 100, y: 100, width: 600, height: 400)
 
+    @MainActor
     private struct Rig {
         let backend: FakeWorkspaceBackend
         let executor: Executor
