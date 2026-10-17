@@ -55,7 +55,7 @@ plus Rectangle, we stop and write down why.
 |---|---|
 | Window IDs across apps | Not run: no multi-app sample |
 | AX frame survival | Not run: no disposable app/window fixture |
-| Global hotkeys | Not run: Terminal/iTerm/Vim fixtures absent; Vim-specific behavior is manual and unverified by the probe |
+| Global hotkeys | Not run: Terminal/Vim fixtures absent; Vim-specific behavior is manual and unverified by the probe |
 | Window birth size | Not run: no fresh-window fixture |
 | Unfold frame rate / 20-window Spread | Not run: 20-window fixture absent |
 | Socket latency (spike 6, CLI per request) | FAIL: p95 53.497ms > 16.67ms with CLI spawn included (server enabled on re-run) |

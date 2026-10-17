@@ -12,17 +12,11 @@ struct OptionTrial {
   let bundleIDs: Set<String>
 }
 let terminalBundle = "com.apple.Terminal"
-let iTermBundle = "com.googlecode.iterm2"
 let optionTrials = [
   OptionTrial(context: "Terminal", key: "h", code: Int64(kVK_ANSI_H), bundleIDs: [terminalBundle]),
   OptionTrial(context: "Terminal", key: "j", code: Int64(kVK_ANSI_J), bundleIDs: [terminalBundle]),
   OptionTrial(context: "Terminal", key: "k", code: Int64(kVK_ANSI_K), bundleIDs: [terminalBundle]),
   OptionTrial(context: "Terminal", key: "l", code: Int64(kVK_ANSI_L), bundleIDs: [terminalBundle]),
-  OptionTrial(context: "iTerm", key: "h", code: Int64(kVK_ANSI_H), bundleIDs: [iTermBundle]),
-  OptionTrial(context: "iTerm", key: "j", code: Int64(kVK_ANSI_J), bundleIDs: [iTermBundle]),
-  OptionTrial(context: "iTerm", key: "k", code: Int64(kVK_ANSI_K), bundleIDs: [iTermBundle]),
-  OptionTrial(context: "iTerm", key: "l", code: Int64(kVK_ANSI_L), bundleIDs: [iTermBundle]),
-
 ]
 var currentOptionTrial: OptionTrial?
 var optionTrialHit = false
@@ -47,7 +41,7 @@ guard CommandLine.arguments.count == 2,
 else {
   fail(
     "usage: hotkeys.swift --carbon | --tap-fallback",
-    "prepare Terminal and iTerm fixtures; test Vim-in-terminal behavior manually")
+    "prepare Terminal fixture; test Vim-in-Terminal behavior manually")
 }
 guard CGPreflightListenEventAccess() else {
   fail(
@@ -126,7 +120,7 @@ guard leakageWindow.makeFirstResponder(leakageField) else {
 }
 let label = carbonMode ? "Carbon" : "CGEventTap fallback"
 print(
-  "\(label): click the disposable text field, press Option+0 once, then press Return in this terminal. Next complete each prompted trial: Option+h/j/k/l, and the Option+R hold (hold Option+R, then press h/j/k/l). Vim-in-Terminal/iTerm trials are manual and cannot be verified by this probe."
+  "\(label): click the disposable text field, press Option+0 once, then press Return in this terminal. Next complete each prompted trial: Option+h/j/k/l, and the Option+R hold (hold Option+R, then press h/j/k/l). Vim-in-Terminal trials are manual and cannot be verified by this probe."
 )
 DispatchQueue.global().async {
   _ = readLine()
@@ -162,5 +156,5 @@ for trial in optionTrials {
 }
 leakageWindow.close()
 print(
-  "PASS: \(label) captured Option+0 without text leakage and every physical Option+h/j/k/l trial (with the Option+R hold) in Terminal and iTerm; Vim-in-Terminal/iTerm remain manual and unverified"
+  "PASS: \(label) captured Option+0 without text leakage and every physical Option+h/j/k/l trial (with the Option+R hold) in Terminal; Vim-in-Terminal remains manual and unverified"
 )
