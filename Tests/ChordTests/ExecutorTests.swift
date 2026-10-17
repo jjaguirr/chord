@@ -357,4 +357,172 @@ struct ExecutorTests {
         try await executor.undo()
         #expect(try await windows(backend) == before)
     }
+
+    // MARK: Reshape
+
+    private let visible = ScreenRect(x: 0, y: 0, width: 1000, height: 800)
+    private let minimum = ActionSize(width: 160, height: 120)
+    private let start = ScreenRect(x: 100, y: 100, width: 400, height: 300)
+
+    private func reshapeBackend(_ frame: ScreenRect? = nil) -> FakeWorkspaceBackend {
+        makeBackend([window(1, .workspace(.one), frame: frame ?? start)])
+    }
+
+    private func bounds(_ backend: FakeWorkspaceBackend) async throws -> ScreenRect? {
+        try await windows(backend)[1]?.bounds
+    }
+
+    @Test func repeatedReshapesAccumulateAndEachStepIsLogged() async throws {
+        let backend = reshapeBackend()
+        let executor = Executor(backend: backend)
+
+        for _ in 0..<3 {
+            let applied = try await executor.reshape(
+                1, aspectDelta: 0, areaDelta: 0.05, minimumSize: minimum, visibleFrame: visible)
+            #expect(applied.count == 1)
+        }
+
+        let now = try #require(try await bounds(backend))
+        #expect(now.width == 431 && now.height == 324)
+        #expect(now.width == now.width.rounded() && now.height == now.height.rounded())
+        let lines = await executor.log.filter { $0.hasPrefix("reshape window 1") }
+        #expect(lines.count == 3)
+    }
+
+    @Test func reshapeClampedAtTheScreenEdgeStaysInsideThenNoOps() async throws {
+        let backend = reshapeBackend(ScreenRect(x: 700, y: 0, width: 300, height: 200))
+        let executor = Executor(backend: backend)
+        try await executor.reshape(1, aspectDelta: 0, areaDelta: 0.5, minimumSize: minimum, visibleFrame: visible)
+        let grown = try #require(try await bounds(backend))
+        #expect(grown.x >= 0 && grown.y >= 0)
+        #expect(grown.x + grown.width <= 1000 && grown.y + grown.height <= 800)
+
+        try await executor.reshape(1, aspectDelta: 0, areaDelta: 10, minimumSize: minimum, visibleFrame: visible)
+        #expect(try await bounds(backend) == visible)
+        let log = await executor.log.count
+        let again = try await executor.reshape(
+            1, aspectDelta: 0, areaDelta: 0.05, minimumSize: minimum, visibleFrame: visible)
+        #expect(again.isEmpty)
+        #expect(await executor.log.count == log)
+    }
+
+    @Test func reshapeStopsAtTheAppMinimumSize() async throws {
+        let backend = reshapeBackend()
+        let executor = Executor(backend: backend)
+        try await executor.reshape(1, aspectDelta: 0, areaDelta: -3, minimumSize: minimum, visibleFrame: visible)
+        let shrunk = try #require(try await bounds(backend))
+        #expect(shrunk.width == 160 && shrunk.height == 120)
+        let again = try await executor.reshape(
+            1, aspectDelta: 0, areaDelta: -0.05, minimumSize: minimum, visibleFrame: visible)
+        #expect(again.isEmpty)
+    }
+
+    @Test func undoRestoresThePreReshapeFrame() async throws {
+        let backend = reshapeBackend()
+        let executor = Executor(backend: backend)
+        try await executor.reshape(1, aspectDelta: 0.05, areaDelta: 0.05, minimumSize: minimum, visibleFrame: visible)
+        #expect(try await bounds(backend) != start)
+
+        try await executor.undo()
+
+        #expect(try await bounds(backend) == start)
+        #expect(await executor.log.contains { $0.hasPrefix("undo: reshape window 1") })
+    }
+
+    @Test func nextReshapeBuildsOnAMouseResizeAndUndoNeverRevertsIt() async throws {
+        let backend = reshapeBackend()
+        let executor = Executor(backend: backend)
+        try await executor.reshape(1, aspectDelta: 0, areaDelta: 0.05, minimumSize: minimum, visibleFrame: visible)
+        let mouse = ScreenRect(x: 50, y: 60, width: 600, height: 500)
+        try await backend.applyFrame(WindowID(1), to: mouse)
+
+        let applied = try await executor.reshape(
+            1, aspectDelta: 0, areaDelta: 0.05, minimumSize: minimum, visibleFrame: visible)
+
+        guard case .reshape(_, _, _, let from, let to) = try #require(applied.first) else {
+            Issue.record("expected a reshape change")
+            return
+        }
+        #expect(from == mouse)
+        #expect(to.width == 615 && to.height == 513)
+
+        try await executor.undo()
+        #expect(try await bounds(backend) == mouse)
+        try await executor.undo()  // stale first reshape: skipped, not re-applied
+        #expect(try await bounds(backend) == mouse)
+        #expect(await executor.log.contains { $0.hasPrefix("undo skipped: window 1 was resized") })
+    }
+
+    @Test func reshapeUsesTheMonitorHoldingTheWindowWhenNoVisibleFrameIsGiven() async throws {
+        let backend = FakeWorkspaceBackend(
+            monitors: [MonitorSnapshot(id: MonitorID(1), bounds: visible, isPrimary: true)],
+            windows: [window(1, .workspace(.one), frame: start)])
+        let executor = Executor(backend: backend)
+        try await executor.reshape(1, aspectDelta: 0, areaDelta: 10, minimumSize: minimum)
+        #expect(try await bounds(backend) == visible)
+    }
+
+    @Test func reshapeWithoutAnyVisibleFrameOrWithUnknownWindowThrows() async throws {
+        let executor = Executor(backend: reshapeBackend())
+        await #expect(throws: ExecutorError.noVisibleFrame) {
+            try await executor.reshape(1, aspectDelta: 0, areaDelta: 0.05, minimumSize: minimum)
+        }
+        await #expect(throws: PlanError.unknownWindow(99)) {
+            try await executor.reshape(
+                99, aspectDelta: 0, areaDelta: 0.05, minimumSize: minimum, visibleFrame: visible)
+        }
+    }
+
+    @Test func controlHJKLIntentsTranslateAndApplyAsUndoableActions() async throws {
+        let cases: [(ChordKey, Double, Double)] = [
+            (.h, -0.05, 0), (.j, 0, 0.05), (.k, 0, -0.05), (.l, 0.05, 0),
+        ]
+        let pickerRect = PickerRect(x: 100, y: 100, width: 400, height: 300)
+        let edges = KeyStateMachine.Edges(left: 0, right: 1000, top: 0, bottom: 800)
+        let modifiers = KeyModifiers(control: true)
+
+        for (key, expectedAspect, expectedArea) in cases {
+            var machine = KeyStateMachine()
+            let intents = machine.process(
+                .down(key, repeat: false, modifiers: modifiers),
+                at: 0, rect: pickerRect, edges: edges)
+            let intent = try #require(intents.first)
+            let source = ActionRect(x: start.x, y: start.y, width: start.width, height: start.height)
+            let target = try #require(
+                reshapeAction(
+                    for: intent, windowID: 1, from: source,
+                    within: ActionRect(x: visible.x, y: visible.y, width: visible.width, height: visible.height),
+                    minimumSize: minimum))
+            guard case .reshape(_, let aspectDelta, let areaDelta, let from, let to) = target else {
+                Issue.record("expected a translated reshape action")
+                continue
+            }
+            #expect(aspectDelta == expectedAspect)
+            #expect(areaDelta == expectedArea)
+            #expect(from == source)
+
+            let backend = reshapeBackend()
+            let executor = Executor(backend: backend)
+            let plan = try Plan(assignments: [])
+            let applied = try await executor.apply(plan, requested: [target])
+            #expect(applied == [
+                .reshape(
+                    windowID: 1, aspectDelta: expectedAspect, areaDelta: expectedArea,
+                    from: start, to: ScreenRect(x: to.x, y: to.y, width: to.width, height: to.height))
+            ])
+            #expect(try await bounds(backend) == ScreenRect(x: to.x, y: to.y, width: to.width, height: to.height))
+
+            try await executor.undo()
+            #expect(try await bounds(backend) == start)
+        }
+    }
+
+    @Test func reshapeTranslatorIgnoresOtherIntents() {
+        #expect(
+            reshapeAction(
+                for: .unfold, windowID: 1,
+                from: ActionRect(x: 0, y: 0, width: 400, height: 300),
+                within: ActionRect(x: 0, y: 0, width: 1000, height: 800),
+                minimumSize: minimum) == nil)
+    }
 }

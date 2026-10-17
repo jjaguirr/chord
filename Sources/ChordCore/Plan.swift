@@ -156,11 +156,15 @@ public enum Action: Equatable, Sendable {
     case frame(windowID: Int, from: ActionRect, to: ActionRect)
     case focus(from: Int?, to: Int)
     case restoreHome(windowID: Int, from: WindowHome, to: WindowHome)
+    /// A user reshape step. The deltas are log-space and recorded for the log;
+    /// `from` and `to` are what the inverse restores.
+    case reshape(windowID: Int, aspectDelta: Double, areaDelta: Double, from: ActionRect, to: ActionRect)
     case noop(windowID: Int)
 
     public var windowID: Int {
         switch self {
-        case .place(let id, _, _), .frame(let id, _, _), .restoreHome(let id, _, _), .noop(let id): return id
+        case .place(let id, _, _), .frame(let id, _, _), .restoreHome(let id, _, _), .noop(let id),
+            .reshape(let id, _, _, _, _): return id
         case .focus(_, let id): return id
         }
     }
@@ -172,6 +176,8 @@ public enum Action: Equatable, Sendable {
         // Without a prior focused window, inverse is an explicit no-op; the backend cannot clear focus.
         case .focus(let from, let to): return from.map { .focus(from: to, to: $0) } ?? .noop(windowID: to)
         case .restoreHome(let id, let from, let to): return .restoreHome(windowID: id, from: to, to: from)
+        case .reshape(let id, let aspect, let area, let from, let to):
+            return .reshape(windowID: id, aspectDelta: 0 - aspect, areaDelta: 0 - area, from: to, to: from)
         case .noop: return self
         }
     }
@@ -184,6 +190,8 @@ public enum Action: Equatable, Sendable {
         case .focus(let from, let to): return "focus window \(to) (was \(from.map(String.init) ?? "none"))"
         case .restoreHome(let id, _, let to):
             return "restore home for window \(id): \(to.logDescription)"
+        case .reshape(let id, let aspect, let area, let from, let to):
+            return "reshape window \(id) (aspect \(aspect), area \(area)): \(from.logDescription) -> \(to.logDescription)"
         case .noop: return "nothing to restore"
         }
     }

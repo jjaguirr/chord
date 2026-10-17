@@ -6,6 +6,7 @@ public enum Change: Equatable, Sendable {
     case place(windowID: Int, from: Place, to: Place)
     case frame(windowID: Int, from: ScreenRect, to: ScreenRect)
     case focus(from: Int?, to: Int)
+    case reshape(windowID: Int, aspectDelta: Double, areaDelta: Double, from: ScreenRect, to: ScreenRect)
     case noop(windowID: Int)
 
     public var inverse: Change {
@@ -13,6 +14,8 @@ public enum Change: Equatable, Sendable {
         case .place(let id, let from, let to): return .place(windowID: id, from: to, to: from)
         case .frame(let id, let from, let to): return .frame(windowID: id, from: to, to: from)
         case .focus(let from, let to): return from.map { .focus(from: to, to: $0) } ?? .noop(windowID: to)
+        case .reshape(let id, let aspect, let area, let from, let to):
+            return .reshape(windowID: id, aspectDelta: 0 - aspect, areaDelta: 0 - area, from: to, to: from)
         case .noop: return self
         }
     }
@@ -23,6 +26,10 @@ public enum Change: Equatable, Sendable {
         case .frame(let id, let from, let to):
             return Action.frame(windowID: id, from: from.actionRect, to: to.actionRect).logLine
         case .focus(let from, let to): return Action.focus(from: from, to: to).logLine
+        case .reshape(let id, let aspect, let area, let from, let to):
+            return Action.reshape(
+                windowID: id, aspectDelta: aspect, areaDelta: area, from: from.actionRect, to: to.actionRect
+            ).logLine
         case .noop: return Action.noop(windowID: 0).logLine
         }
     }
@@ -42,6 +49,8 @@ private extension WindowHome {
 
 public enum ExecutorError: Error, Equatable, Sendable {
     case nothingToUndo
+    /// No visible frame was supplied and no monitor contains the window.
+    case noVisibleFrame
 }
 
 extension ScreenRect {
@@ -83,12 +92,14 @@ public actor Executor {
 
     // MARK: Plans
 
-    /// Applies `plan` and optional explicit `frames` as one undoable step. Throws
-    /// `PlanError.unknownWindow` before changing anything if any named window is
-    /// not in the backend's snapshot. If a backend call fails midway, the changes
-    /// already applied stay on the undo stack and the error is rethrown.
+    /// Applies `plan`, optional explicit `frames`, and typed `requested` actions as
+    /// one undoable step. Throws `PlanError.unknownWindow` before changing anything
+    /// if any named window is not in the backend's snapshot. If a backend call fails
+    /// midway, the changes already applied stay on the undo stack and the error is rethrown.
     @discardableResult
-    public func apply(_ plan: Plan, frames: [Int: ScreenRect] = [:]) async throws -> [Change] {
+    public func apply(
+        _ plan: Plan, frames: [Int: ScreenRect] = [:], requested requestedActions: [Action] = []
+    ) async throws -> [Change] {
         let snapshot = try await backend.snapshot()
         let known = Set(snapshot.windows.map(\.id.rawValue))
         try plan.validate(knownWindows: known)
@@ -103,13 +114,13 @@ public actor Executor {
             bounds[window.id.rawValue] = window.bounds
         }
 
-        let requested = frames.keys.sorted().compactMap { id -> Action? in
+        let frameActions = frames.keys.sorted().compactMap { id -> Action? in
             guard let current = bounds[id], let frame = frames[id] else { return nil }
             let target = frame.roundedToIntegers()
             guard current != target else { return nil }
             return .frame(windowID: id, from: current.actionRect, to: target.actionRect)
         }
-        let actions = try plan.actions(from: model, requested: requested)
+        let actions = try plan.actions(from: model, requested: frameActions + requestedActions)
         let planned = changes(from: actions)
         let applied = try await run(planned)
         if !applied.isEmpty { undoStack.append(applied) }
@@ -132,6 +143,47 @@ public actor Executor {
         let applied = try await run(planned)
         undoStack.append(applied)
         return applied
+    }
+
+    /// One user reshape step: log-space deltas on aspect and area, clamped to the
+    /// visible frame and `minimumSize`, rounded to integers, as its own undoable
+    /// step. The start frame is the backend's fresh snapshot, so a size the user
+    /// set with the mouse is the base of the next step, never overwritten by a
+    /// remembered one. Nothing is read back after the apply. `visibleFrame`
+    /// defaults to the monitor holding the window's center. Returns `[]` when the
+    /// step is already clamped.
+    @discardableResult
+    public func reshape(
+        _ id: Int, aspectDelta: Double, areaDelta: Double,
+        minimumSize: ActionSize, visibleFrame: ScreenRect? = nil
+    ) async throws -> [Change] {
+        let snapshot = try await backend.snapshot()
+        guard let window = snapshot.windows.first(where: { $0.id.rawValue == id }) else {
+            throw PlanError.unknownWindow(id)
+        }
+        guard let visible = visibleFrame ?? Self.monitorBounds(holding: window.bounds, in: snapshot) else {
+            throw ExecutorError.noVisibleFrame
+        }
+        guard let action = reshapeAction(
+            for: .reshape(aspectDelta: aspectDelta, areaDelta: areaDelta),
+            windowID: id, from: window.bounds.actionRect,
+            within: visible.actionRect, minimumSize: minimumSize)
+        else { return [] }
+        let plan = try Plan(assignments: [])
+        let planned = changes(from: try plan.actions(from: [id: window.place], requested: [action]))
+        let applied = try await run(planned)
+        undoStack.append(applied)
+        return applied
+    }
+
+    private static func monitorBounds(holding rect: ScreenRect, in snapshot: BackendSnapshot) -> ScreenRect? {
+        let cx = rect.x + rect.width / 2
+        let cy = rect.y + rect.height / 2
+        let holding = snapshot.monitors.first {
+            $0.bounds.x <= cx && cx < $0.bounds.x + $0.bounds.width
+                && $0.bounds.y <= cy && cy < $0.bounds.y + $0.bounds.height
+        }
+        return (holding ?? snapshot.monitors.first(where: \.isPrimary) ?? snapshot.monitors.first)?.bounds
     }
 
     /// Restores a remembered place and frame as one undoable transaction.
@@ -161,6 +213,14 @@ public actor Executor {
         var reverted: [Change] = []
         for (index, change) in transaction.enumerated().reversed() {
             do {
+                if case .reshape(let id, _, _, _, let to) = change {
+                    // The user resized it since (mouse, app): that size stands.
+                    let current = try await backend.snapshot().windows.first { $0.id.rawValue == id }
+                    if let current, current.bounds != to {
+                        appendLog("undo skipped: window \(id) was resized since the reshape")
+                        continue
+                    }
+                }
                 reverted.append(contentsOf: try await run([change.inverse], label: "undo"))
             } catch BackendError.unknownWindow(let id) {
                 appendLog("undo skipped: window \(id.rawValue) is gone")
@@ -268,6 +328,12 @@ public actor Executor {
                 }
             case .focus(let from, let to):
                 changes.append(.focus(from: from, to: to))
+            case .reshape(let id, let aspect, let area, let from, let to):
+                let target = to.screenRect.roundedToIntegers()
+                if from.screenRect != target {
+                    changes.append(
+                        .reshape(windowID: id, aspectDelta: aspect, areaDelta: area, from: from.screenRect, to: target))
+                }
             case .restoreHome(let id, let from, let to):
                 if from.place != to.place {
                     changes.append(.place(windowID: id, from: from.place, to: to.place))
@@ -288,6 +354,10 @@ public actor Executor {
         case .place(let id, _, let to):
             let from = try await backend.moveWindow(WindowID(id), to: to)
             return .place(windowID: id, from: from, to: to)
+        case .reshape(let id, let aspect, let area, _, let to):
+            let target = to.roundedToIntegers()
+            let from = try await backend.applyFrame(WindowID(id), to: target)
+            return .reshape(windowID: id, aspectDelta: aspect, areaDelta: area, from: from, to: target)
         case .frame(let id, _, let to):
             let target = to.roundedToIntegers()
             let from = try await backend.applyFrame(WindowID(id), to: target)
@@ -306,6 +376,8 @@ public actor Executor {
         switch change {
         case .place(let id, _, let to):
             return snapshot.windows.first { $0.id.rawValue == id }?.place == to
+        case .reshape(let id, _, _, _, let to):
+            return snapshot.windows.first { $0.id.rawValue == id }?.bounds == to
         case .frame(let id, _, let to):
             return snapshot.windows.first { $0.id.rawValue == id }?.bounds == to
         case .focus(_, let to):
@@ -333,7 +405,7 @@ public actor Executor {
             focusedID = to
         case .place(let id, _, let to) where id == focusedID:
             focusedPlace = to
-        case .place, .frame, .noop:
+        case .place, .frame, .reshape, .noop:
             break
         }
     }
