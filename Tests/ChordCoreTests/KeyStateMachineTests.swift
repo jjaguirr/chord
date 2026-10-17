@@ -5,7 +5,6 @@ import Testing
 
 private let plain = KeyModifiers()
 private let shift = KeyModifiers(shift: true)
-private let control = KeyModifiers(control: true)
 private let mod = KeyModifiers(mod: true)
 private let testRect = PickerRect(x: 100, y: 100, width: 40, height: 40)
 private let testEdges = KeyStateMachine.Edges(left: 0, right: 500, top: 0, bottom: 500)
@@ -163,7 +162,7 @@ private let testEdges = KeyStateMachine.Edges(left: 0, right: 500, top: 0, botto
   #expect(machine.advance(to: 0.32, rect: testRect, edges: testEdges).isEmpty)
 }
 
-@Test func reshapeUsesLogSpaceAndControlKeyMapping() {
+@Test func reshapeUsesLogSpaceAndOptionRMapping() {
   let machine = KeyStateMachine()
   let aspect = machine.reshapeDeltas(for: .l)
   let area = machine.reshapeDeltas(for: .j)
@@ -175,9 +174,46 @@ private let testEdges = KeyStateMachine.Edges(left: 0, right: 500, top: 0, botto
     #expect(abs(log(newWidth / newHeight) - newAspect) < 1e-12)
     #expect(abs(log(newWidth * newHeight) - newArea) < 1e-12)
   }
-  var controlled = KeyStateMachine()
+  var reshaping = KeyStateMachine()
   #expect(
-    controlled.process(
-      .down(.h, repeat: false, modifiers: control), at: 0, rect: testRect, edges: testEdges)
-      == [.reshape(aspectDelta: -0.05, areaDelta: 0)])
+    reshaping.process(.down(.r, repeat: false, modifiers: mod), at: 0, rect: testRect, edges: testEdges)
+      .isEmpty)
+  for (key, aspectDelta, areaDelta) in [
+    (ChordKey.h, -0.05, 0.0), (.l, 0.05, 0), (.j, 0, 0.05), (.k, 0, -0.05),
+  ] {
+    #expect(
+      reshaping.process(.down(key, repeat: false, modifiers: mod), at: 0.1, rect: testRect, edges: testEdges)
+        == [.reshape(aspectDelta: aspectDelta, areaDelta: areaDelta)])
+    _ = reshaping.process(.up(key, modifiers: mod), at: 0.2, rect: testRect, edges: testEdges)
+  }
+}
+
+@Test func reshapeNeedsOptionAndRHeldAndStopsWhenRIsReleased() {
+  var noR = KeyStateMachine()
+  _ = noR.process(.down(.h, repeat: false, modifiers: mod), at: 0, rect: testRect, edges: testEdges)
+  #expect(noR.advance(to: 1, rect: testRect, edges: testEdges) == [.look(.h)])
+
+  var noOption = KeyStateMachine()
+  _ = noOption.process(.down(.r, repeat: false, modifiers: plain), at: 0, rect: testRect, edges: testEdges)
+  #expect(
+    !noOption.process(.down(.h, repeat: false, modifiers: plain), at: 0.1, rect: testRect, edges: testEdges)
+      .contains { if case .reshape = $0 { true } else { false } })
+
+  var released = KeyStateMachine()
+  _ = released.process(.down(.r, repeat: false, modifiers: mod), at: 0, rect: testRect, edges: testEdges)
+  #expect(
+    released.process(.down(.l, repeat: false, modifiers: mod), at: 0.1, rect: testRect, edges: testEdges)
+      == [.reshape(aspectDelta: 0.05, areaDelta: 0)])
+  _ = released.process(.up(.l, modifiers: mod), at: 0.2, rect: testRect, edges: testEdges)
+  _ = released.process(.up(.r, modifiers: mod), at: 0.3, rect: testRect, edges: testEdges)
+  _ = released.process(.down(.l, repeat: false, modifiers: mod), at: 0.4, rect: testRect, edges: testEdges)
+  #expect(
+    released.process(.up(.l, modifiers: mod), at: 0.45, rect: testRect, edges: testEdges) == [.look(.l)])
+}
+
+@Test func plainLookIsUnaffectedByReshapeMode() {
+  var machine = KeyStateMachine()
+  _ = machine.process(.down(.h, repeat: false, modifiers: plain), at: 0, rect: testRect, edges: testEdges)
+  #expect(
+    machine.process(.up(.h, modifiers: plain), at: 0.05, rect: testRect, edges: testEdges) == [.look(.h)])
 }

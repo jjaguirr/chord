@@ -29,7 +29,7 @@ this is worth keeping. If it doesn't, we find out in weeks.
 | `Mod+Tab` | Back |
 | `Mod+hjkl` | Look (move focus) |
 | `Mod+Shift+hjkl` | Carry a window |
-| `Mod+Ctrl+hjkl` | Reshape |
+| Hold `Mod+R`, then `hjkl` | Reshape |
 | `Mod+0` tap | Unfold |
 | `Mod+0` hold | Spread |
 

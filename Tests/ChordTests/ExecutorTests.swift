@@ -473,16 +473,18 @@ struct ExecutorTests {
         }
     }
 
-    @Test func controlHJKLIntentsTranslateAndApplyAsUndoableActions() async throws {
+    @Test func optionRHJKLIntentsTranslateAndApplyAsUndoableActions() async throws {
         let cases: [(ChordKey, Double, Double)] = [
             (.h, -0.05, 0), (.j, 0, 0.05), (.k, 0, -0.05), (.l, 0.05, 0),
         ]
         let pickerRect = PickerRect(x: 100, y: 100, width: 400, height: 300)
         let edges = KeyStateMachine.Edges(left: 0, right: 1000, top: 0, bottom: 800)
-        let modifiers = KeyModifiers(control: true)
+        let modifiers = KeyModifiers(mod: true)
 
         for (key, expectedAspect, expectedArea) in cases {
             var machine = KeyStateMachine()
+            _ = machine.process(
+                .down(.r, repeat: false, modifiers: modifiers), at: 0, rect: pickerRect, edges: edges)
             let intents = machine.process(
                 .down(key, repeat: false, modifiers: modifiers),
                 at: 0, rect: pickerRect, edges: edges)

@@ -30,6 +30,7 @@ Places are roles: they answer "what is this for", not "which app is this". Bind 
 ## Movement rules
 
 - `Mod+1..9` go to place n; `Mod+Shift+1..9` carry the focused window; `` Mod+` `` / `` Mod+Shift+` `` go to / carry to the bench; `Mod+Tab` goes back to the previous place.
+- Reshape: hold `Mod+R`, then `hjkl`. Every Chord hotkey is Option-based; Ctrl is never a Chord modifier (it stays free for Ctrl+hjkl arrow remaps).
 - `Mod+n` while on n ("tidy this room"): re-applying templates is post-v1; the v1 behavior is defined in C9.
 - The Sorter and Executor change where a window lives, never how big it is. Every move records a home (frame + place) for undo; Spread/gather restores exact homes.
 

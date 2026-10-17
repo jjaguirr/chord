@@ -12,7 +12,7 @@ An original macOS window manager in Swift (not a fork of AeroSpace) with its own
 
 ## Principles
 
-1. **Size is a decision, never a default.** A window is born as a card (A5, 333 x 471 px; unrounded height 333*sqrt(2) = 470.93) and stays that size until the user decides otherwise. The complete list of things that may make a window big: a fullscreen or zoom command, a mouse resize, a reshape (`Mod+Ctrl+hjkl`), an Unfold (`Mod+0`). (Folding a tiled window is post-v1.) Not an app's preferred size, a layout engine, the Sorter, the Executor, or any agent. A recorded standing wish is still the user's decision.
+1. **Size is a decision, never a default.** A window is born as a card (A5, 333 x 471 px; unrounded height 333*sqrt(2) = 470.93) and stays that size until the user decides otherwise. The complete list of things that may make a window big: a fullscreen or zoom command, a mouse resize, a reshape (hold `Mod+R`, then `hjkl`), an Unfold (`Mod+0`). (Folding a tiled window is post-v1.) Not an app's preferred size, a layout engine, the Sorter, the Executor, or any agent. A recorded standing wish is still the user's decision.
 2. **Places, not app groups.** `1-9` are places, `0` is this window, `` ` `` is the bench. Places answer "what is this for".
 3. **One grammar, escalating consequence.** `hjkl` are directions; modifiers set consequence: look (focus), carry (take the window), reshape (size). `Shift` always means "take this with you". Two keys together are a chord (a diagonal).
 4. **Preview, then commit; nothing is a one-way door.** Every action has an inverse (step back, undo, remembered homes) and a log line. v1 uses immediate look (no preview overlay, no latch); aim/latch is post-v1.
