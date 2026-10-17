@@ -55,9 +55,8 @@ Login (off by default), Check for Updates… (a single GitHub Releases request;
 see the Privacy section of `docs/PRODUCT.md`), Open Log Folder (placeholder
 target until diagnostics lands), and Quit. Without Accessibility access it
 explains why, opens System Settings, and re-checks every second. Log lines go
-to `~/Library/Logs/Chord/chord.log`. Background update checks are off unless
-`[updates] background_check = true` is set in
-`~/Library/Application Support/Chord/config.toml`.
+to `~/Library/Logs/Chord/chord.log`. See the Privacy section of
+[`docs/PRODUCT.md`](docs/PRODUCT.md) for update-check behavior and configuration.
 The bundle id `com.example.chord` is a placeholder for the release issue.
 
 `ChordCore` contains pure `frame()` math, a spatial `Picker`, Plan types with
