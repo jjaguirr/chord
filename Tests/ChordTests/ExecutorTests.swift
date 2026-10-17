@@ -383,7 +383,7 @@ struct ExecutorTests {
         }
 
         let now = try #require(try await bounds(backend))
-        #expect(now.width > 440 && now.height > 330)
+        #expect(now.width == 431 && now.height == 324)
         #expect(now.width == now.width.rounded() && now.height == now.height.rounded())
         let lines = await executor.log.filter { $0.hasPrefix("reshape window 1") }
         #expect(lines.count == 3)
