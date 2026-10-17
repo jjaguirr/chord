@@ -52,6 +52,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let crashItem = NSMenuItem(title: "Recent Crash Reports", action: nil, keyEquivalent: "")
     private var inputCapture: InputCapture?
     private var inputTimer: Timer?
+    private var windowMotion: WindowMotion?
     private var inputMonitoringGranted = false
     private let inputMenu = NSMenu()
     private let inputProblemItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
@@ -272,7 +273,12 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // consumed while paused; resuming re-runs the input self-check.
         paused.toggle()
         ActionLog.live.write(paused ? "pause: paused" : "pause: resumed")
-        if paused { inputCapture?.stop() } else { inputCapture?.start() }
+        if paused {
+            inputCapture?.stop()
+            Task { await windowMotion?.cancel() }
+        } else {
+            inputCapture?.start()
+        }
         refresh()
     }
 
@@ -294,13 +300,28 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Input capture
 
     private func startInputCapture() {
+        let clock = SystemInputClock()
+        let focused = FocusedGeometry(clock: clock)
+        let logLine: @Sendable (String) -> Void = { ActionLog.live.write($0) }
+        // The Accessibility backend and the Executor are the only path from a key to a
+        // window. The backend never prompts: without trust every call fails and is logged.
+        let executor = Executor(backend: AXWindowBackend(), logSink: logLine)
+        let motion = WindowMotion(
+            executor: executor, clock: clock,
+            stepWindow: Double(config.timing.unfoldStepWindowMs) / 1000, log: logLine)
+        motion.start()
+        windowMotion = motion
+
         let capture = InputCapture(
             config: config, carbon: CarbonHotkeySource(), tap: EventTapSource(),
-            permissions: SystemInputPermissions(), clock: SystemInputClock(),
-            geometry: { MainActor.assumeIsolated { Self.screenGeometry() } },
-            logSink: { ActionLog.live.write($0) })
+            permissions: SystemInputPermissions(), clock: clock,
+            geometry: { MainActor.assumeIsolated { focused.current() } },
+            logSink: logLine)
         capture.tickRequest = { [weak self] needed in
             MainActor.assumeIsolated { self?.setInputTicking(needed) }
+        }
+        capture.intentHandler = { intents in
+            MainActor.assumeIsolated { motion.submit(.intents(intents)) }
         }
         inputCapture = capture
         inputMonitoringGranted = SystemInputPermissions().inputMonitoringGranted
@@ -324,11 +345,6 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         RunLoop.main.add(timer, forMode: .common)
         inputTimer = timer
-    }
-
-    private static func screenGeometry() -> InputGeometry {
-        guard let frame = NSScreen.main?.visibleFrame else { return .standIn }
-        return .centered(on: frame)
     }
 
     private func refreshInputStatus() {

@@ -4,11 +4,15 @@
 Chord is a keyboard-first window manager for macOS. It decides **where**
 windows live and **how you move between them** — and leaves **size** to you.
 
-> **Status: pre-alpha, app shell plus input capture.** Chord builds as a menu-bar agent
-> bundle (`scripts/build-app.sh`) with an Accessibility permission flow, a pause
-> switch, launch at login, and global Option hotkey capture that only logs: every
-> captured key and the intent the key state machine derives from it. It is not yet a
-> functioning window manager: no window operations or backend are wired in.
+> **Status: pre-alpha, app shell, input capture, and three window moves.** Chord builds
+> as a menu-bar agent bundle (`scripts/build-app.sh`) with an Accessibility permission
+> flow, a pause switch, launch at login, and global Option hotkey capture that logs
+> every captured key and the intent the key state machine derives from it. With
+> Accessibility granted, Option+0 taps run Unfold, Option+R then h/j/k/l reshapes,
+> and Option+Shift+h/j/k/l carries the focused window, through the Accessibility API
+> directly. Each move is logged and undoable in the Executor (no undo key yet). Not yet
+> verified on live windows. Look, Spread, and places are not wired: a place key only
+> logs.
 
 ## The bet
 
