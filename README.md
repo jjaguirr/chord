@@ -51,9 +51,12 @@ open build/Chord.app
 `swift run Chord` runs the menu-bar shell without a bundle; launch at login
 requires the packaged `.app`. The shell adds a menu-bar item showing status
 (running, paused, or needs Accessibility permission), Pause/Resume, Launch at
-Login (off by default), Open Log Folder (placeholder target until diagnostics
-lands), and Quit. Without Accessibility access it explains why, opens System
-Settings, and re-checks every second. Log lines go to `~/Library/Logs/Chord/chord.log`.
+Login (off by default), Check for Updates… (a single GitHub Releases request;
+see the Privacy section of `docs/PRODUCT.md`), Open Log Folder (placeholder
+target until diagnostics lands), and Quit. Without Accessibility access it
+explains why, opens System Settings, and re-checks every second. Log lines go
+to `~/Library/Logs/Chord/chord.log`. See the Privacy section of
+[`docs/PRODUCT.md`](docs/PRODUCT.md) for update-check behavior and configuration.
 The bundle id `com.example.chord` is a placeholder for the release issue.
 
 `ChordCore` contains pure `frame()` math, a spatial `Picker`, Plan types with

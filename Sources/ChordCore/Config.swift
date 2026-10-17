@@ -84,6 +84,14 @@ public struct Backend: Equatable, Sendable {
   public static let defaults = Backend(aerospaceTag: "v0.21.3-Beta")
 }
 
+/// Update checks. Off by default. The menu's "Check for Updates…" item works regardless.
+public struct Updates: Equatable, Sendable {
+  /// Once-a-day background check against the GitHub Releases API.
+  public let backgroundCheck: Bool
+
+  public static let defaults = Updates(backgroundCheck: false)
+}
+
 /// Size a user may ask for ahead of time. Size stays the user's decision; a
 /// standing wish is that decision recorded as a rule. These are the only
 /// size-changing commands a config can name.
@@ -132,12 +140,13 @@ public struct Config: Equatable, Sendable {
   public let timing: Timing
   public let carry: Carry
   public let backend: Backend
+  public let updates: Updates
   /// Sorted by app name.
   public let standingWishes: [StandingWish]
 
   public static let defaults = Config(
     keys: .defaults, timing: .defaults, carry: .defaults, backend: .defaults,
-    standingWishes: [])
+    updates: .defaults, standingWishes: [])
 
   /// Parses config text. Never traps on any input.
   public static func load(text: String) -> ConfigLoadResult {
@@ -155,6 +164,7 @@ public struct Config: Equatable, Sendable {
     var timing = Timing.defaults
     var carry = Carry.defaults
     var backend = Backend.defaults
+    var updates = Updates.defaults
     var wishes: [StandingWish] = []
 
     for table in document.tables {
@@ -178,6 +188,9 @@ public struct Config: Equatable, Sendable {
       case "backend":
         reader.reportUnknownKeys(in: table, known: ["aerospace_tag"])
         backend = reader.readBackend(table)
+      case "updates":
+        reader.reportUnknownKeys(in: table, known: ["background_check"])
+        updates = reader.readUpdates(table)
       case "standing_wishes":
         wishes = reader.readStandingWishes(table)
       default:
@@ -190,7 +203,7 @@ public struct Config: Equatable, Sendable {
       return ConfigLoadResult(config: .defaults, diagnostics: diagnostics)
     }
     let config = Config(
-      keys: keys, timing: timing, carry: carry, backend: backend,
+      keys: keys, timing: timing, carry: carry, backend: backend, updates: updates,
       standingWishes: wishes.sorted { $0.app < $1.app })
     return ConfigLoadResult(config: config, diagnostics: [])
   }
@@ -220,6 +233,9 @@ public struct Config: Equatable, Sendable {
       "",
       "[backend]",
       "aerospace_tag = \(tomlQuoted(backend.aerospaceTag))",
+      "",
+      "[updates]",
+      "background_check = \(updates.backgroundCheck)",
       "",
       "[standing_wishes]",
     ]
@@ -398,6 +414,16 @@ private struct ConfigReader {
       return .defaults
     }
     return Backend(aerospaceTag: tag)
+  }
+
+  mutating func readUpdates(_ table: TOMLTable) -> Updates {
+    guard let entry = table.entries["background_check"] else { return .defaults }
+    let key = qualified(table, "background_check")
+    guard case .boolean(let value) = entry.value else {
+      diagnostics.append(.wrongType(line: entry.line, key: key, expected: "boolean"))
+      return .defaults
+    }
+    return Updates(backgroundCheck: value)
   }
 
   mutating func readStandingWishes(_ table: TOMLTable) -> [StandingWish] {
