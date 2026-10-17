@@ -45,6 +45,15 @@ dojo · the `Mod+0` palette · the Sorter's model layer (rules first).
 Agents see an app name and a redacted title, never pixels. The vault (9)
 is invisible to agents. Password managers are redacted everywhere.
 
+Update checks send one unauthenticated `GET` to
+`https://api.github.com/repos/jjaguirr/chord/releases/latest`. The request
+carries the Chord version in its `User-Agent` and nothing else: no install
+identifier, no account, no cookies, no telemetry, no crash reports. Chord
+never downloads or installs an update; "Open Download Page" opens the release
+page in the browser only when the user clicks it. The once-a-day background
+check is off by default and enabled with `[updates] background_check = true`
+in `~/Library/Application Support/Chord/config.toml`.
+
 ## Non-goals
 
 No auto-maximizing. No app or agent resizing. No AI in the vault. No

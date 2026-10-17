@@ -1,4 +1,5 @@
 import AppKit
+import ChordCore
 
 /// What the menu bar reports. Permission outranks pause: a paused app that also lacks
 /// Accessibility access still needs the user's attention first.
@@ -24,7 +25,7 @@ enum ShellStatus {
     }
 }
 
-/// Menu-bar shell: status, pause switch, Accessibility permission flow, launch at login.
+/// Menu-bar shell: status, pause switch, Accessibility permission flow, launch at login, and update check.
 /// Holds no window references and makes no window calls; window changes belong to the Executor.
 @MainActor
 final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -34,9 +35,19 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var grantItem = makeItem("Grant Accessibility Access…", #selector(grantAccessibility))
     private lazy var pauseItem = makeItem("Pause Chord", #selector(togglePause))
     private lazy var loginItem = makeItem("Launch at Login", #selector(toggleLaunchAtLogin))
+    private lazy var checkUpdatesItem = makeItem("Check for Updates…", #selector(checkForUpdates))
+    private lazy var availableUpdateItem = makeItem("", #selector(showAvailableUpdate))
     private var permissionWatch: Timer?
     private var paused = false
     private var accessibilityGranted = false
+    private var config = Config.defaults
+    private var availableRelease: LatestRelease?
+    private var updateCheckRunning = false
+    private var updateTimer: Timer?
+    private static let lastCheckKey = "updates.lastCheckedAt"
+    private var installedVersion: String? {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    }
 
     private var status: ShellStatus {
         if !accessibilityGranted { return .needsPermission }
@@ -58,18 +69,26 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(grantItem)
         menu.addItem(pauseItem)
         menu.addItem(loginItem)
+        menu.addItem(availableUpdateItem)
+        menu.addItem(checkUpdatesItem)
         // Placeholder target: the log folder stands in until the diagnostics issue lands.
         menu.addItem(makeItem("Open Log Folder", #selector(openLogFolder)))
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit Chord", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
         menu.addItem(quit)
+        config = ConfigFile.load()
+
         refresh()
 
         // Polled for the app's lifetime so a grant (or revoke) lands without a restart.
         // AXIsProcessTrusted is a cheap read.
         permissionWatch = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.checkAccessibility() }
+        }
+
+        if config.updates.backgroundCheck {
+            startBackgroundUpdateChecks()
         }
 
         if !accessibilityGranted {
@@ -96,6 +115,96 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         grantItem.isHidden = accessibilityGranted
         pauseItem.title = paused ? "Resume Chord" : "Pause Chord"
         loginItem.state = LaunchAtLogin.isEnabled ? .on : .off
+        checkUpdatesItem.isEnabled = !updateCheckRunning
+        availableUpdateItem.isHidden = availableRelease == nil
+        if let release = availableRelease {
+            availableUpdateItem.title = "Update available: \(release.tag)"
+        }
+    }
+
+    @objc private func checkForUpdates() {
+        runUpdateCheck(manual: true)
+    }
+
+    @objc private func showAvailableUpdate() {
+        guard let release = availableRelease else { return }
+        presentUpdate(release)
+    }
+
+    private func startBackgroundUpdateChecks() {
+        checkBackgroundUpdateIfDue()
+        // Hourly ticks; the 24-hour gap comes from the stored last-check time, so a relaunch does not re-check early.
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkBackgroundUpdateIfDue() }
+        }
+    }
+
+    private func checkBackgroundUpdateIfDue() {
+        let last = UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date
+        if let last, Date().timeIntervalSince(last) < 24 * 60 * 60 { return }
+        runUpdateCheck(manual: false)
+    }
+
+    private func runUpdateCheck(manual: Bool) {
+        guard !updateCheckRunning else { return }
+        updateCheckRunning = true
+        refresh()
+        ActionLog.write("update check: started (\(manual ? "manual" : "background"))")
+        let version = installedVersion
+        Task {
+            let result = await UpdateChecker.run(currentVersion: version)
+            updateCheckRunning = false
+            handleUpdateResult(result, manual: manual)
+        }
+    }
+
+    private func handleUpdateResult(_ result: UpdateCheckResult, manual: Bool) {
+        let current = installedVersion ?? "an unversioned build"
+        switch result {
+        case .upToDate:
+            recordSuccessfulCheck()
+            availableRelease = nil
+            ActionLog.write("update check: up to date at \(current)")
+            if manual { showMessage("Chord is up to date", "You have \(current).") }
+        case .available(let release):
+            recordSuccessfulCheck()
+            availableRelease = release
+            ActionLog.write("update check: \(release.tag) available; running \(current)")
+            if manual { presentUpdate(release) }
+        case .failed(let reason):
+            ActionLog.write("update check: failed: \(reason)")
+            if manual { showMessage("Couldn't check for updates", reason) }
+        }
+        refresh()
+    }
+
+    private func recordSuccessfulCheck() {
+        UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
+    }
+
+    private func presentUpdate(_ release: LatestRelease) {
+        let alert = NSAlert()
+        alert.messageText = "Chord \(release.tag) is available"
+        alert.informativeText = """
+        You have \(installedVersion ?? "an unversioned build"). Release notes and download: \
+        \(release.pageURL.absoluteString)
+        Chord never downloads or installs updates itself.
+        """
+        alert.addButton(withTitle: "Open Download Page")
+        alert.addButton(withTitle: "Not Now")
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            ActionLog.write("update check: download page not opened")
+            return
+        }
+        ActionLog.write("update check: opened download page for \(release.tag)")
+        NSWorkspace.shared.open(release.pageURL)
+    }
+
+    private func showMessage(_ title: String, _ text: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = text
+        alert.runModal()
     }
 
     private func checkAccessibility() {
