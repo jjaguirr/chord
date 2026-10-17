@@ -53,3 +53,11 @@ public enum UpdateCheck {
     return latest > installed ? .available : .upToDate
   }
 }
+public enum UpdateSchedule {
+  private static let backgroundCheckInterval: Double = 86_400
+
+  public static func isBackgroundCheckDue(lastAttemptAt: Double?, now: Double) -> Bool {
+    guard let lastAttemptAt else { return true }
+    return now < lastAttemptAt || now - lastAttemptAt >= backgroundCheckInterval
+  }
+}

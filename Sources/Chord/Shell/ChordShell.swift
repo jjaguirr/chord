@@ -140,14 +140,15 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func checkBackgroundUpdateIfDue() {
-        let last = UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date
-        if let last, Date().timeIntervalSince(last) < 24 * 60 * 60 { return }
+        let last = (UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date)?.timeIntervalSince1970
+        if !UpdateSchedule.isBackgroundCheckDue(lastAttemptAt: last, now: Date().timeIntervalSince1970) { return }
         runUpdateCheck(manual: false)
     }
 
     private func runUpdateCheck(manual: Bool) {
         guard !updateCheckRunning else { return }
         updateCheckRunning = true
+        UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
         refresh()
         ActionLog.write("update check: started (\(manual ? "manual" : "background"))")
         let version = installedVersion
@@ -162,12 +163,10 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let current = installedVersion ?? "an unversioned build"
         switch result {
         case .upToDate:
-            recordSuccessfulCheck()
             availableRelease = nil
             ActionLog.write("update check: up to date at \(current)")
             if manual { showMessage("Chord is up to date", "You have \(current).") }
         case .available(let release):
-            recordSuccessfulCheck()
             availableRelease = release
             ActionLog.write("update check: \(release.tag) available; running \(current)")
             if manual { presentUpdate(release) }
@@ -178,9 +177,6 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh()
     }
 
-    private func recordSuccessfulCheck() {
-        UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
-    }
 
     private func presentUpdate(_ release: LatestRelease) {
         let alert = NSAlert()

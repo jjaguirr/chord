@@ -49,4 +49,17 @@ struct UpdateCheckTests {
         #expect(UpdateCheck.evaluate(current: "0.1.0", latestTag: "v0.2.0-beta")
             == .unparseable("v0.2.0-beta"))
     }
+
+    @Test("a failed attempt is not retried before 24 hours")
+    func failedAttemptWaitsADay() {
+        let attemptAt = 1_000_000.0
+        #expect(!UpdateSchedule.isBackgroundCheckDue(lastAttemptAt: attemptAt, now: attemptAt + 3_600))
+        #expect(UpdateSchedule.isBackgroundCheckDue(lastAttemptAt: attemptAt, now: attemptAt + 86_400))
+    }
+
+    @Test("no prior attempt and a backwards clock make the check due")
+    func missingOrFutureAttemptIsDue() {
+        #expect(UpdateSchedule.isBackgroundCheckDue(lastAttemptAt: nil, now: 1_000_000))
+        #expect(UpdateSchedule.isBackgroundCheckDue(lastAttemptAt: 1_000_001, now: 1_000_000))
+    }
 }
