@@ -19,10 +19,11 @@ private struct FakeWindow {
 
 private let screen = UnfoldRect(x: 0, y: 25, width: 1920, height: 1055)
 private let start = UnfoldRect(x: 300, y: 200, width: 800, height: 600)
-private let count = UnfoldConfig().stepCount
+private let count = unfoldLandmarkRatios.count + 1
 
 private func target(_ step: Int, _ s: UnfoldRect = screen) -> UnfoldRect {
-    let f = frame(Double(step) / Double(count - 1), screenW: s.width, screenH: s.height)
+    let t = unfoldStopTimes(screenW: s.width, screenH: s.height)[step]
+    let f = frame(t, screenW: s.width, screenH: s.height)
     return UnfoldRect(x: s.x + f.x, y: s.y + f.y, width: f.w, height: f.h)
 }
 
@@ -30,6 +31,8 @@ private func make() -> (UnfoldAnimator, FakeClock) {
     let clock = FakeClock()
     return (UnfoldAnimator(clock: clock), clock)
 }
+
+private func ratio(_ r: UnfoldRect) -> Double { r.width / r.height }
 
 private func expectRect(_ a: UnfoldRect, _ b: UnfoldRect, tol: Double = 1e-9) {
     expectRelativelyClose(a.x, b.x, relTol: tol)
@@ -75,6 +78,41 @@ private func expectRect(_ a: UnfoldRect, _ b: UnfoldRect, tol: Double = 1e-9) {
         }
         #expect(widths == widths.sorted())
         expectRelativelyClose(widths.last!, frame(1, screenW: 1920, screenH: 1055).w, relTol: 1e-12)
+    }
+
+    @Test func eachPressLandsOnLandmarkRatioOnCommonScreens() {
+        let expected = [1.0 / 2.0.squareRoot()] + unfoldLandmarkRatios
+        for (w, h) in [(1280.0, 720.0), (1440.0, 900.0), (2560.0, 1440.0)] {
+            let vis = UnfoldRect(x: 0, y: 0, width: w, height: h)
+            var (a, clock) = make()
+            a.press(window: start, visibleFrame: vis)
+            clock.time += 0.3
+            expectRelativelyClose(ratio(a.tick()!), expected[0], relTol: 1e-9)
+            for k in 1..<expected.count {
+                clock.time += 0.2
+                a.press(window: start, visibleFrame: vis)
+                clock.time += 0.15
+                let r = a.tick()!
+                expectRelativelyClose(ratio(r), expected[k], relTol: 1e-6, "\(w)x\(h) step \(k)")
+                #expect(r.x >= -1e-9 && r.y >= -1e-9 && r.x + r.width <= w + 1e-9 && r.y + r.height <= h + 1e-9)
+            }
+            // Clamp at 16:9.
+            clock.time += 0.2
+            a.press(window: start, visibleFrame: vis)
+            clock.time += 0.15
+            expectRelativelyClose(ratio(a.tick()!), 16.0 / 9, relTol: 1e-9)
+            #expect(a.step == expected.count - 1)
+        }
+    }
+
+    @Test func stopTimesAreStrictlyIncreasingAndMatchCharterReference() {
+        let t = unfoldStopTimes(screenW: 1920, screenH: 1080)
+        #expect(t.count == 6 && t.first == 0 && t.last == 1)
+        #expect(t == t.sorted() && Set(t).count == 6)
+        // Charter cross-check: square 0.6504, 4:3 0.7551, 3:2 0.8053, golden 0.8465.
+        for (got, want) in zip(t[1...4], [0.6504, 0.7551, 0.8053, 0.8465]) {
+            #expect(abs(got - want) < 5e-4)
+        }
     }
 
     @Test func timerExpiryReturnsToIdleKeepingSizeThenPressResetsToA5() {

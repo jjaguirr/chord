@@ -19,11 +19,38 @@ public protocol UnfoldClock {
     func now() -> Double
 }
 
+/// The landmark aspect ratios Unfold steps through after the A5 card (`t = 0`),
+/// as width / height: square, 4:3, 3:2, golden, and 16:9 (S2).
+public let unfoldLandmarkRatios: [Double] = [1, 4.0 / 3, 3.0 / 2, Unfold.phi, 16.0 / 9]
+
+/// The `t` of every Unfold stop on a screen: `[0, square, 4:3, 3:2, golden, 1]`.
+/// Each interior `t` is found by bisecting `frame()` for the landmark ratio on
+/// the segment S1 -> S2, where the ratio rises monotonically. Never hand-typed.
+public func unfoldStopTimes(screenW: Double, screenH: Double, margin: Double = 0) -> [Double] {
+    var stops = [0.0]
+    for target in unfoldLandmarkRatios.dropLast() {
+        var lo = Unfold.knot
+        var hi = 1.0
+        for _ in 0..<100 {
+            let mid = (lo + hi) / 2
+            if frame(mid, screenW: screenW, screenH: screenH, margin: margin).ratio < target {
+                lo = mid
+            } else {
+                hi = mid
+            }
+        }
+        stops.append((lo + hi) / 2)
+    }
+    stops.append(1)
+    return stops
+}
+
 /// Timing for the Unfold move (issue #11).
 ///
 /// Unfold is a press-and-timer stepper, not an autonomous grow: the first press
 /// shrinks to the baby A5 size, every further press inside the timer window
-/// steps one size up the `frame(t)` path, and an expired timer returns to idle.
+/// advances to the next landmark ratio on the `frame(t)` path
+/// (`unfoldStopTimes`), and an expired timer returns to idle.
 public struct UnfoldConfig: Equatable, Sendable {
     /// ASSUMPTION (captain will tune): time after a press in which another press
     /// steps up instead of resetting. Config key `unfold_step_window_ms` is
@@ -36,8 +63,6 @@ public struct UnfoldConfig: Equatable, Sendable {
     public var stepDuration: Double
     /// Timer restarted by every press, seconds.
     public var stepWindow: Double
-    /// Number of sizes, A5 included: step `k` sits at `t = k / (stepCount - 1)`.
-    public var stepCount: Int
     /// Passed to `frame()`.
     public var margin: Double
 
@@ -45,16 +70,13 @@ public struct UnfoldConfig: Equatable, Sendable {
         shrinkDuration: Double = 0.3,
         stepDuration: Double = 0.15,
         stepWindow: Double = UnfoldConfig.defaultStepWindow,
-        stepCount: Int = 6,
         margin: Double = 0
     ) {
         precondition(shrinkDuration > 0 && stepDuration > 0, "durations must be positive")
         precondition(stepWindow > 0, "step window must be positive")
-        precondition(stepCount >= 2, "need at least A5 and the largest size")
         self.shrinkDuration = shrinkDuration
         self.stepDuration = stepDuration
         self.stepWindow = stepWindow
-        self.stepCount = stepCount
         self.margin = margin
     }
 }
@@ -92,8 +114,10 @@ public struct UnfoldAnimator {
     public private(set) var phase: UnfoldPhase = .idle
     /// Last rect this animator produced, or nil before the first press.
     public private(set) var currentRect: UnfoldRect?
-    /// Index of the size being eased to or rested at; 0 is A5.
+    /// Index of the landmark being eased to or rested at; 0 is the A5 card.
     public private(set) var step = 0
+    /// Stop `t`s for the current screen, fixed when a sequence starts.
+    private var stops: [Double] = [0]
 
     private var easeStart = 0.0
     private var easeDuration = 0.0
@@ -122,17 +146,19 @@ public struct UnfoldAnimator {
         if phase == .idle {
             start = window
             screen = visibleFrame
+            stops = unfoldStopTimes(
+                screenW: visibleFrame.width, screenH: visibleFrame.height, margin: config.margin)
             step = 0
             easeDuration = config.shrinkDuration
             phase = .shrink
         } else {
             start = rect(at: now)
-            step = min(step + 1, config.stepCount - 1)
+            step = min(step + 1, stops.count - 1)
             easeDuration = config.stepDuration
             phase = .step
         }
         from = start
-        to = place(t: Double(step) / Double(config.stepCount - 1))
+        to = place(t: stops[step])
         easeStart = now
         deadline = now + config.stepWindow
         currentRect = start
