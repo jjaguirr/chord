@@ -19,6 +19,8 @@ struct HotkeyCatalog: Equatable, Sendable {
             list.append(binding)
         }
 
+        // Option+0 (unfold), Option+R (reshape) and Option+Tab (cycle) are fixed
+        // constants, not config bindings.
         add(.digit0, shift: false, .unfold)
         add(.keyR, shift: false, .reshape)
         let directions: [(PhysicalKey, ChordKey)] = [
@@ -31,9 +33,9 @@ struct HotkeyCatalog: Equatable, Sendable {
         }
         for shift in [false, true] { add(InputKey(keys.bench), shift: shift, .bench) }
         add(.tab, shift: false, .cycle)
-        // Places are the digit row. The redacted-tier and vault bindings are included
-        // so a rebound key still arrives; none of them is special-cased here.
-        let digits = "123456789".map { InputKey(code: "Digit\($0)") }
+        // Places are digit-row keys 1 and up, enumerated generically (0 is unfold). The
+        // redacted-tier and vault bindings come from the config and are not special-cased.
+        let digits = (1..<10).map { InputKey(code: "Digit\($0)") }
         let placeKeys = digits + [InputKey(keys.redactedTier), InputKey(keys.vault)]
         for shift in [false, true] {
             for key in placeKeys { add(key, shift: shift, .place) }

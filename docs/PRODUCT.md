@@ -49,7 +49,7 @@ copies the Chord and macOS versions, pinned AeroSpace version and health,
 Accessibility state, config default/customized flags and standing-wish count
 (not values or app names), recent Chord crash-report file names, and the last
 50 log lines to the clipboard, followed by the input-capture status (permissions,
-tap state, per-hotkey registration results, counters). Chord
+tap state, per-hotkey registration results, counters including presses Carbon never delivered while the event tap saw them; diagnostic only, no hotkey changes owner). Chord
 does not upload that report. Recent Crash Reports lists at most five Chord
 reports and reveals a selected report in Finder; attaching it to an issue is
 manual.

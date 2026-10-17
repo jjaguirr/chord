@@ -15,8 +15,6 @@ enum InputProblem: Equatable, Sendable {
     case carbonHandlerFailed(Int32)
     /// `tapFallback` is true when the event tap took the failed keys over.
     case registrationFailed([RegistrationFailure], tapFallback: Bool)
-    /// Carbon accepted the registrations but never delivered a press the tap saw.
-    case carbonSilent(first: String, moved: Int)
 
     var cause: String {
         switch self {
@@ -32,8 +30,6 @@ enum InputProblem: Equatable, Sendable {
             "Carbon hotkey handler could not be installed (\(InputStatus.describe(status))): no Carbon hotkeys are active."
         case .registrationFailed(let failures, let tapFallback):
             Self.registrationCause(failures, tapFallback: tapFallback)
-        case .carbonSilent(let first, let moved):
-            "Carbon registered \(first) but never delivered it while the event tap saw it: \(moved) hotkeys moved to the event tap."
         }
     }
 
@@ -62,7 +58,7 @@ struct InputCounters: Equatable, Sendable {
     var intents = 0
     /// Tap saw a Carbon-owned press and Carbon delivered it too.
     var carbonConfirmed = 0
-    /// Tap saw a Carbon-owned press and Carbon never did.
+    /// Tap saw a Carbon-owned press and Carbon did not deliver it within the grace window; diagnostic only.
     var carbonSilent = 0
     var ignoredDuplicates = 0
     var missedKeyUps = 0

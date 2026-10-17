@@ -26,9 +26,9 @@ struct InputGeometry: Equatable {
 ///
 /// Ownership: a hotkey Carbon registered is owned by Carbon; one it refused is owned by
 /// the tap. The tap also watches Carbon-owned keys without consuming them. If the tap
-/// sees a press Carbon never delivers within `carbonGrace`, Carbon is silently broken for
-/// that modifier family (registration succeeded but nothing fires), so those hotkeys move
-/// to the tap and the cause is reported.
+/// sees a press Carbon does not deliver within `carbonGrace`, the capture logs a
+/// DIAGNOSTIC line and counts it; ownership never changes and the tap keeps passing
+/// those events through.
 ///
 /// Main thread only: both sources deliver on the main run loop.
 final class InputCapture: HotkeySourceDelegate {
@@ -40,10 +40,9 @@ final class InputCapture: HotkeySourceDelegate {
         let path: CapturePath
     }
 
-    private struct Shadow {
+    private struct TapPress {
         let binding: HotkeyBinding
         let downAt: Double
-        var upAt: Double?
     }
 
     private let catalog: HotkeyCatalog
@@ -63,13 +62,13 @@ final class InputCapture: HotkeySourceDelegate {
     private var startProblems: [InputProblem] = []
     private var runtimeProblems: [InputProblem] = []
     private var held: [InputKey: Held] = [:]
-    private var shadows: [InputKey: Shadow] = [:]
+    private var unconfirmed: [InputKey: TapPress] = [:]
     private var recentCarbonDowns: [InputKey: Double] = [:]
     private var tickRequested = false
     private(set) var counters = InputCounters()
 
-    /// Called when the capture starts or stops needing `tick()` (a key is down or Carbon
-    /// is being cross-checked). The app runs a timer only while this is true.
+    /// Called when the capture starts or stops needing `tick()` (a key is down or a tap press
+    /// awaits Carbon's confirmation). The app runs a timer only while this is true.
     var tickRequest: ((Bool) -> Void)?
 
     init(
@@ -113,7 +112,7 @@ final class InputCapture: HotkeySourceDelegate {
         startProblems = []
         runtimeProblems = []
         held = [:]
-        shadows = [:]
+        unconfirmed = [:]
         recentCarbonDowns = [:]
 
         let accessibility = permissions.accessibilityGranted
@@ -173,7 +172,7 @@ final class InputCapture: HotkeySourceDelegate {
         running = false
         tapRunning = false
         held = [:]
-        shadows = [:]
+        unconfirmed = [:]
         recentCarbonDowns = [:]
         machine = KeyStateMachine(configuration: machineConfiguration)
         updateTickRequest()
@@ -186,14 +185,14 @@ final class InputCapture: HotkeySourceDelegate {
         start()
     }
 
-    var needsTick: Bool { !held.isEmpty || !shadows.isEmpty }
+    var needsTick: Bool { !held.isEmpty || !unconfirmed.isEmpty }
 
-    /// Advances hold and repeat timers, and cross-checks Carbon. Call from a timer while
+    /// Advances hold and repeat timers, and reports presses Carbon never delivered. Call from a timer while
     /// `tickRequest` last reported true.
     func tick() {
         guard running else { return }
         let now = clock.now()
-        promoteSilentCarbon(now: now)
+        reportSilentCarbon(now: now)
         let screen = geometry()
         let intents = machine.advance(to: now, rect: screen.rect, edges: screen.edges)
         if !intents.isEmpty {
@@ -286,7 +285,7 @@ final class InputCapture: HotkeySourceDelegate {
         case .down:
             if path == .carbon {
                 recentCarbonDowns[key] = time
-                if shadows.removeValue(forKey: key) != nil { counters.carbonConfirmed += 1 }
+                if unconfirmed.removeValue(forKey: key) != nil { counters.carbonConfirmed += 1 }
             }
             if let stale = held[key] {
                 counters.missedKeyUps += 1
@@ -318,48 +317,29 @@ final class InputCapture: HotkeySourceDelegate {
         return .passThrough
     }
 
-    /// Tap saw a key Carbon owns. Pass it through (Carbon takes it if it works) and note it
-    /// so a Carbon that never delivers is caught by `tick()`.
+    /// Tap saw a key Carbon owns. Pass it through (Carbon takes it if it works) and note the
+    /// press so a Carbon that never delivers it is reported by `tick()`.
     private func observeCarbonOwnedKey(_ binding: HotkeyBinding, _ phase: KeyPhase, at time: Double) {
         let key = binding.key
-        switch phase {
-        case .down:
+        if phase == .down {
             if let at = recentCarbonDowns[key], time - at <= Self.carbonGrace {
                 counters.carbonConfirmed += 1
-            } else if shadows[key] == nil {
-                shadows[key] = Shadow(binding: binding, downAt: time)
+            } else if unconfirmed[key] == nil {
+                unconfirmed[key] = TapPress(binding: binding, downAt: time)
             }
-        case .up:
-            shadows[key]?.upAt = time
-        case .autorepeat:
-            break
         }
         counters.passedThrough += 1
         updateTickRequest()
     }
 
-    private func promoteSilentCarbon(now: Double) {
-        func overdue() -> Shadow? {
-            shadows.values.filter { now - $0.downAt >= Self.carbonGrace }.min { $0.downAt < $1.downAt }
-        }
-        while let first = overdue() {
-            let shift = first.binding.shift
-            var moved = 0
-            for binding in catalog.bindings where binding.shift == shift && owners[binding] == .carbon {
-                owners[binding] = .tap
-                moved += 1
-            }
-            let problem = InputProblem.carbonSilent(first: first.binding.label, moved: moved)
-            runtimeProblems.append(problem)
-            log("input: PROBLEM \(problem.cause)")
-            // Replay what the tap already saw, so the first press is not lost.
-            let replay = shadows.values.filter { owners[$0.binding] == .tap }.sorted { $0.downAt < $1.downAt }
-            for shadow in replay {
-                shadows[shadow.binding.key] = nil
-                counters.carbonSilent += 1
-                _ = accept(shadow.binding, .down, path: .tap, at: shadow.downAt)
-                if let upAt = shadow.upAt { _ = accept(shadow.binding, .up, path: .tap, at: upAt) }
-            }
+    private func reportSilentCarbon(now: Double) {
+        let overdue = unconfirmed.values
+            .filter { now - $0.downAt >= Self.carbonGrace }
+            .sorted { $0.downAt < $1.downAt }
+        for press in overdue {
+            unconfirmed[press.binding.key] = nil
+            counters.carbonSilent += 1
+            log("input: DIAGNOSTIC Carbon registered \(press.binding.label) but did not deliver the press the tap saw; ownership unchanged")
         }
     }
 

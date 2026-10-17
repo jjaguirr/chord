@@ -1,7 +1,7 @@
 import ApplicationServices
 import CoreGraphics
 
-/// Session event tap for keys Carbon cannot take, and a cross-check on the keys it did.
+/// Session event tap for keys Carbon cannot take, and a passive watcher of the keys it did.
 /// It consumes only what the delegate tells it to. The caller must have confirmed
 /// Accessibility and Input Monitoring first: creating a tap without them can raise a
 /// system prompt, which this app never triggers. Main thread only.

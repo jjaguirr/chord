@@ -55,7 +55,9 @@ Login (off by default), Check for Updates… (a single GitHub Releases request;
 see the Privacy section of `docs/PRODUCT.md`), Open Log Folder, Copy Diagnostics,
 and a Recent Crash Reports submenu. **Input status** shows Accessibility and Input
 Monitoring state, whether the event tap is enabled, each hotkey's Carbon
-registration result (the OSStatus on failure), and event counters; **Copy Input
+registration result (the OSStatus on failure), and event counters (including `carbon silent`,
+presses the event tap saw that Carbon never delivered; each is also logged as an
+`input: DIAGNOSTIC` line and no hotkey changes owner); **Copy Input
 Diagnostics** copies that plus recent `input:` log lines. A failed precondition (no
 permission, tap disabled by the system, a hotkey another app already holds) appears as
 one line under the status line and in the log. Without Accessibility access it explains why,

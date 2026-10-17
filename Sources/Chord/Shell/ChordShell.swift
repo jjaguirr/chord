@@ -314,7 +314,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         inputCapture?.restart(reason: reason)
     }
 
-    /// Runs the hold/repeat timer only while a key is down or Carbon is being cross-checked.
+    /// Runs the hold/repeat timer only while a key is down or a tap press awaits Carbon's confirmation.
     private func setInputTicking(_ needed: Bool) {
         inputTimer?.invalidate()
         inputTimer = nil

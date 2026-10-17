@@ -349,37 +349,42 @@ struct InputCaptureTests {
 
     // MARK: Carbon cross-check
 
-    @Test func carbonThatNeverFiresIsPromotedToTheTapAndTheFirstPressIsReplayed() {
+    @Test func carbonThatNeverFiresIsReportedWithoutChangingOwnership() {
         let h = Harness()
         h.at(0)
         #expect(h.tap.send("Digit1") == .passThrough)
         h.advance(to: 0.05)
-        #expect(h.capture.status().hotkeys.first { $0.label == "Option+1" }?.owner == .carbon)
+        #expect(h.capture.counters.carbonSilent == 0)
+        #expect(!h.log.has("DIAGNOSTIC"))
         h.advance(to: 0.1)
 
         let status = h.capture.status()
-        #expect(status.hotkeys.first { $0.label == "Option+1" }?.owner == .tap)
-        #expect(status.hotkeys.first { $0.label == "Option+2" }?.owner == .tap)
-        #expect(status.hotkeys.first { $0.label == "Option+Shift+1" }?.owner == .carbon)
-        #expect(status.problems.first?.cause.contains("never delivered") == true)
-        #expect(h.log.has("down Option+1", "path=tap"))
-        #expect(h.tap.send("Digit2") == .consume)
+        #expect(status.counters.carbonSilent == 1)
+        #expect(h.log.has("DIAGNOSTIC", "Option+1", "did not deliver", "ownership unchanged"))
+        #expect(status.problems.isEmpty)
+        #expect(status.hotkeys.first { $0.label == "Option+1" }?.owner == .carbon)
+        #expect(status.hotkeys.first { $0.label == "Option+2" }?.owner == .carbon)
+        #expect(h.tap.send("Digit1") == .passThrough)
+        #expect(h.tap.send("Digit2") == .passThrough)
+        #expect(status.counters.consumed == 0)
+        #expect(!h.log.has("down Option+1"))
     }
 
-    @Test func quickPressIsReplayedDownAndUpSoNothingStaysHeld() {
+    @Test func eachSilentPressIsReportedOnce() {
         let h = Harness()
         h.at(0)
         h.tap.send("Digit1")
-        h.at(0.02)
-        h.tap.send("Digit1", option: true, .up)
         h.advance(to: 0.1)
-
-        #expect(h.log.has("down Option+1", "path=tap"))
-        #expect(h.log.has("up Option+1", "path=tap"))
+        h.advance(to: 0.2)
+        #expect(h.capture.counters.carbonSilent == 1)
         #expect(!h.capture.needsTick)
+        h.at(0.3)
+        h.tap.send("Digit1")
+        h.advance(to: 0.4)
+        #expect(h.capture.counters.carbonSilent == 2)
     }
 
-    @Test func carbonThatDeliversIsNeverPromoted() {
+    @Test func carbonThatDeliversIsNotReported() {
         let h = Harness()
         h.at(0)
         h.tap.send("Digit1")
@@ -389,7 +394,9 @@ struct InputCaptureTests {
 
         let status = h.capture.status()
         #expect(status.problems.isEmpty)
+        #expect(status.counters.carbonSilent == 0)
         #expect(status.counters.carbonConfirmed == 1)
+        #expect(!h.log.has("DIAGNOSTIC"))
         #expect(status.hotkeys.first { $0.label == "Option+1" }?.owner == .carbon)
         #expect(h.log.lines.filter { $0.contains("down Option+1") }.count == 1)
     }
