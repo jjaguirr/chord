@@ -16,7 +16,7 @@ behavior is not yet validated. Chord reads window geometry itself. See the
 | InputLayer | no | Registered Carbon hotkeys; CGEventTap fallback |
 | KeyStateMachine | yes | Timestamped tap/hold, directional chords, carry ramp, reshape intents |
 | Picker | yes | Rects + direction vector → target window |
-| Unfold | yes | Pure `frame()` geometry |
+| Unfold | yes | Pure `frame()` geometry and press/timer state machine |
 | Spread | no | View mode with remembered frames |
 | WorkspaceBackend | no | Replaceable substrate protocol; PR1 provides a deterministic fake |
 | Executor | no | The only component allowed to change windows (`Sources/Chord/Executor`) |
