@@ -20,7 +20,7 @@ behavior is not yet validated. Chord reads window geometry itself. See the
 | Spread | no | View mode with remembered frames |
 | WorkspaceBackend | no | Replaceable substrate protocol; PR1 provides a deterministic fake |
 | Executor | no | The only component allowed to change windows (`Sources/Chord/Executor`) |
-| ChordShell | no | Menu-bar status, pause, permission, launch-at-login, and update-check controls; no window operations. Update implementation is in `Sources/Chord/Update` |
+| ChordShell | no | Menu-bar status, pause, permission, launch-at-login, update, and diagnostics controls; no window operations. Update implementation is in `Sources/Chord/Update` |
 | Agents | no | Files emitting typed plans |
 
 Exactly one arrow reaches the socket. CI enforces the backend boundary;

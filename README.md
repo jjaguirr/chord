@@ -70,13 +70,16 @@ progress.
 
 ## Filing a bug
 
-Chord sends nothing anywhere. To report a problem:
+Diagnostics are copied to your clipboard only; Chord does not upload them. To
+report a problem:
 
-1. Open the Chord menu and choose **Copy Diagnostics**. It copies the Chord and macOS versions, the pinned AeroSpace version and health, Accessibility state, config as "defaults" or "customized" flags (no key bindings or app names), recent crash report file names, and the last 50 log lines.
-2. Paste it into a new GitHub issue.
-3. If **Recent Crash Reports** lists a report, choose it to reveal it in Finder and attach it to the issue by hand.
+1. Choose **Copy Diagnostics** in the Chord menu and paste the report into a
+   new GitHub issue.
+2. If **Recent Crash Reports** lists a report, choose it to reveal it in Finder
+   and attach it to the issue by hand.
 
-The log is `~/Library/Logs/Chord/chord.log`; **Open Log Folder** shows it. It rotates at 1 MiB and keeps two older files. Place 4 and password-manager window titles are redacted. No current log line includes a window title.
+See the [Privacy section](docs/PRODUCT.md#privacy) for what the report contains,
+where logs are stored, retention, and redaction.
 
 ## Docs
 

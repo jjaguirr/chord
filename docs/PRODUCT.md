@@ -44,6 +44,19 @@ dojo · the `Mod+0` palette · the Sorter's model layer (rules first).
 
 Agents see an app name and a redacted title, never pixels. The vault (9)
 is invisible to agents. Password managers are redacted everywhere.
+Diagnostics remain local until you choose to share them. **Copy Diagnostics**
+copies the Chord and macOS versions, pinned AeroSpace version and health,
+Accessibility state, config default/customized flags and standing-wish count
+(not values or app names), recent Chord crash-report file names, and the last
+50 log lines to the clipboard. Chord
+does not upload that report. Recent Crash Reports lists at most five Chord
+reports and reveals a selected report in Finder; attaching it to an issue is
+manual.
+
+The local log is `~/Library/Logs/Chord/chord.log`, with two rotated archives.
+The active file rotates at 1 MiB; individual messages are clipped to 4096
+UTF-8 bytes. The window-title redaction policy excludes Place 4 and
+password-manager titles.
 
 Update checks send one unauthenticated `GET` to
 `https://api.github.com/repos/jjaguirr/chord/releases/latest`. The request
