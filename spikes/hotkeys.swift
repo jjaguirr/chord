@@ -28,8 +28,12 @@ var finished = false
 var carbonMode = false
 var monitoredField: NSTextField?
 func leakageFieldFocused() -> Bool {
-  guard let field = monitoredField else { return false }
-  return NSApp.keyWindow?.firstResponder === field
+  guard let field = monitoredField, let responder = NSApp.keyWindow?.firstResponder else {
+    return false
+  }
+  if responder === field { return true }
+  guard let editor = field.currentEditor() else { return false }
+  return responder === editor
 }
 func fail(_ reason: String, _ path: String) -> Never {
   fputs("FAIL: \(reason); fail path: \(path)\n", stderr)
