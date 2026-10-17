@@ -16,7 +16,7 @@ These disposable probes are deliberately outside SwiftPM targets. Run each on a 
 | 4 | [`birth-size.swift`](birth-size.swift) | Set a dedicated app's only fresh test window to 333×471; accept exact size or a supplied, documented app minimum clamp; restore original size. |
 | 5 | [`unfold-spread.swift`](unfold-spread.swift) | Replay 120-frame 30/60-fps AX geometry changes with elapsed-time skipping; time 20-window Spread moves; p95 budgets 33.33/16.67/16.67ms. |
 | 6 | [`socket-latency.sh`](socket-latency.sh) | Measure 100 AeroSpace CLI request round trips; p95 ≤16.67ms. Includes CLI startup overhead. |
-| 6b | [`socket-latency-direct.py`](socket-latency-direct.py) | Measure 100 read-only `list-windows` queries over one persistent AeroSpace Unix-socket connection (no process spawn); p95 ≤16.67ms. Requires `python3`. Requires `python3`. Server disabled/unreachable is `FAIL` with remedy. |
+| 6b | [`socket-latency-direct.py`](socket-latency-direct.py) | Measure 100 read-only `list-windows` queries over one persistent AeroSpace Unix-socket connection (no process spawn); p95 ≤16.67ms. Requires `python3`. Server disabled/unreachable is `FAIL` with remedy. Result 2026-10-17 (server enabled, installed 0.20.3 framing): FAIL, p95 41.322ms. |
 | 7 | [`hold-detector.swift`](hold-detector.swift) | Standalone Mod+0 detector with a 10-second resting baseline and three deliberate holds ≥700ms; fail on resting activation or missed hold. |
 
 Current environment details and the report on unavailable trials are in

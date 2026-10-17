@@ -59,7 +59,7 @@ plus Rectangle, we stop and write down why.
 | Window birth size | Not run: no fresh-window fixture |
 | Unfold frame rate / 20-window Spread | Not run: 20-window fixture absent |
 | Socket latency (spike 6, CLI per request) | FAIL: p95 53.497ms > 16.67ms with CLI spawn included (server enabled on re-run) |
-| Socket latency (spike 6b, direct socket) | Not run: probe added (`spikes/socket-latency-direct.py`, needs `python3`); 100-request measurement owed to the captain |
+| Socket latency (spike 6b, direct socket) | FAIL: p95 41.322ms > 16.67ms (min 6.113, max 248.658, 100 samples), direct socket, server enabled, 2026-10-17; server-side latency, not CLI spawn, exceeds the budget (spike 6 CLI-spawn p95 53.497ms). AeroSpace reads are not viable per-frame; command-speed use only. Probe targets installed 0.20.3 framing (`spikes/socket-latency-direct.py`) |
 | Mod+0 hold detector | Not run: controlled resting-finger trial absent |
 
 Detailed substrate evidence and the provisional backend recommendation are in

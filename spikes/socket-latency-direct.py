@@ -31,11 +31,11 @@ def fail(why, remedy):
     sys.exit(1)
 
 
-def request(sock, buf=b""):
+def request(sock):
     """Send one query and return the decoded ServerAnswer."""
     payload = json.dumps({"args": ARGS, "stdin": "", "windowId": None, "workspace": None}).encode()
     sock.sendall(payload)
-    data = buf
+    data = b""
     decoder = json.JSONDecoder()
     while True:
         chunk = sock.recv(65536)
@@ -75,8 +75,8 @@ def main():
         except (OSError, ValueError) as e:
             fail("request failed mid-run (%s)" % e, "inspect server/socket configuration")
         lat.append((time.monotonic() - start) * 1000.0)
-        if ans.get("exitCode") != 0:
-            fail("server returned exitCode %s mid-run" % ans.get("exitCode"), "inspect server state")
+        if not isinstance(ans, dict) or ans.get("exitCode") != 0:
+            fail("server returned a non-success answer mid-run (%s)" % (ans.get("exitCode") if isinstance(ans, dict) else ans), "inspect server state")
     lat.sort()
     p95 = lat[math.ceil(SAMPLES * 0.95) - 1]
     if p95 <= THRESHOLD_MS:
