@@ -52,10 +52,10 @@ open build/Chord.app
 requires the packaged `.app`. The shell adds a menu-bar item showing status
 (running, paused, or needs Accessibility permission), Pause/Resume, Launch at
 Login (off by default), Check for Updates… (a single GitHub Releases request;
-see the Privacy section of `docs/PRODUCT.md`), Open Log Folder (placeholder
-target until diagnostics lands), and Quit. Without Accessibility access it
-explains why, opens System Settings, and re-checks every second. Log lines go
-to `~/Library/Logs/Chord/chord.log`. See the Privacy section of
+see the Privacy section of `docs/PRODUCT.md`), Open Log Folder, Copy Diagnostics,
+and a Recent Crash Reports submenu. Without Accessibility access it explains why,
+opens System Settings, and re-checks every second. Log lines go to
+`~/Library/Logs/Chord/chord.log`. See the Privacy section of
 [`docs/PRODUCT.md`](docs/PRODUCT.md) for update-check behavior and configuration.
 The bundle id `com.example.chord` is a placeholder for the release issue.
 
@@ -67,6 +67,19 @@ checks that the test target compiles.
 
 Bootstrap steps 1–5 are complete; see [STATUS.md](docs/STATUS.md) for current
 progress.
+
+## Filing a bug
+
+Diagnostics are copied to your clipboard only; Chord does not upload them. To
+report a problem:
+
+1. Choose **Copy Diagnostics** in the Chord menu and paste the report into a
+   new GitHub issue.
+2. If **Recent Crash Reports** lists a report, choose it to reveal it in Finder
+   and attach it to the issue by hand.
+
+See the [Privacy section](docs/PRODUCT.md#privacy) for what the report contains,
+where logs are stored, retention, and redaction.
 
 ## Docs
 

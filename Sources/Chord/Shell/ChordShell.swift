@@ -48,6 +48,8 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var installedVersion: String? {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
     }
+    private let crashMenu = NSMenu()
+    private let crashItem = NSMenuItem(title: "Recent Crash Reports", action: nil, keyEquivalent: "")
 
     private var status: ShellStatus {
         if !accessibilityGranted { return .needsPermission }
@@ -56,7 +58,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         accessibilityGranted = AccessibilityPermission.isGranted
-        ActionLog.write("launch: accessibility \(accessibilityGranted ? "granted" : "missing")")
+        ActionLog.live.write("launch: accessibility \(accessibilityGranted ? "granted" : "missing")")
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.menu = menu
@@ -71,8 +73,10 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(loginItem)
         menu.addItem(availableUpdateItem)
         menu.addItem(checkUpdatesItem)
-        // Placeholder target: the log folder stands in until the diagnostics issue lands.
         menu.addItem(makeItem("Open Log Folder", #selector(openLogFolder)))
+        menu.addItem(makeItem("Copy Diagnostics", #selector(copyDiagnostics)))
+        crashItem.submenu = crashMenu
+        menu.addItem(crashItem)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit Chord", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
@@ -99,6 +103,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         checkAccessibility()
         refresh()
+        refreshCrashReports()
     }
 
     private func makeItem(_ title: String, _ action: Selector) -> NSMenuItem {
@@ -150,7 +155,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateCheckRunning = true
         UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
         refresh()
-        ActionLog.write("update check: started (\(manual ? "manual" : "background"))")
+        ActionLog.live.write("update check: started (\(manual ? "manual" : "background"))")
         let version = installedVersion
         Task {
             let result = await UpdateChecker.run(currentVersion: version)
@@ -164,14 +169,14 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch result {
         case .upToDate:
             availableRelease = nil
-            ActionLog.write("update check: up to date at \(current)")
+            ActionLog.live.write("update check: up to date at \(current)")
             if manual { showMessage("Chord is up to date", "You have \(current).") }
         case .available(let release):
             availableRelease = release
-            ActionLog.write("update check: \(release.tag) available; running \(current)")
+            ActionLog.live.write("update check: \(release.tag) available; running \(current)")
             if manual { presentUpdate(release) }
         case .failed(let reason):
-            ActionLog.write("update check: failed: \(reason)")
+            ActionLog.live.write("update check: failed: \(reason)")
             if manual { showMessage("Couldn't check for updates", reason) }
         }
         refresh()
@@ -189,10 +194,10 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.addButton(withTitle: "Open Download Page")
         alert.addButton(withTitle: "Not Now")
         guard alert.runModal() == .alertFirstButtonReturn else {
-            ActionLog.write("update check: download page not opened")
+            ActionLog.live.write("update check: download page not opened")
             return
         }
-        ActionLog.write("update check: opened download page for \(release.tag)")
+        ActionLog.live.write("update check: opened download page for \(release.tag)")
         NSWorkspace.shared.open(release.pageURL)
     }
 
@@ -207,7 +212,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let granted = AccessibilityPermission.isGranted
         guard granted != accessibilityGranted else { return }
         accessibilityGranted = granted
-        ActionLog.write(granted ? "permission: accessibility granted" : "permission: accessibility revoked")
+        ActionLog.live.write(granted ? "permission: accessibility granted" : "permission: accessibility revoked")
         refresh()
     }
 
@@ -226,26 +231,55 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Not Now")
         guard alert.runModal() == .alertFirstButtonReturn else {
-            ActionLog.write("permission: explanation dismissed")
+            ActionLog.live.write("permission: explanation dismissed")
             return
         }
         // The prompt variant registers Chord in the Accessibility list so its switch exists.
         AccessibilityPermission.requestWithPrompt()
         AccessibilityPermission.openSettingsPane()
-        ActionLog.write("permission: requested accessibility; opened settings")
+        ActionLog.live.write("permission: requested accessibility; opened settings")
     }
 
     @objc private func togglePause() {
         // Inverse: selecting it again resumes. Nothing is registered yet, so pause has no
         // hotkey to release; later hotkey work must check this flag before consuming keys.
         paused.toggle()
-        ActionLog.write(paused ? "pause: paused" : "pause: resumed")
+        ActionLog.live.write(paused ? "pause: paused" : "pause: resumed")
         refresh()
     }
 
     @objc private func openLogFolder() {
-        ActionLog.write("log folder: opened")
-        NSWorkspace.shared.open(ActionLog.directory)
+        ActionLog.live.write("log folder: opened")
+        NSWorkspace.shared.open(ActionLog.live.directory)
+    }
+
+    @objc private func copyDiagnostics() {
+        // Read-only: writes only the clipboard, which Chord does not own, so there is no
+        // inverse to record. The copy itself is logged.
+        let text = DiagnosticsCollector.render(config: config)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        ActionLog.live.write("diagnostics: copied to clipboard")
+    }
+
+    private func refreshCrashReports() {
+        crashMenu.removeAllItems()
+        let reports = DiagnosticsCollector.recentCrashReports()
+        if reports.isEmpty {
+            crashMenu.addItem(NSMenuItem(title: "None found", action: nil, keyEquivalent: ""))
+            return
+        }
+        for url in reports {
+            let item = makeItem(url.lastPathComponent, #selector(revealCrashReport(_:)))
+            item.representedObject = url
+            crashMenu.addItem(item)
+        }
+    }
+
+    @objc private func revealCrashReport(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        ActionLog.live.write("crash report: revealed \(url.lastPathComponent)")
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     @objc private func toggleLaunchAtLogin() {
@@ -253,13 +287,13 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let enable = !LaunchAtLogin.isEnabled
         do {
             try LaunchAtLogin.setEnabled(enable)
-            ActionLog.write("login item: \(enable ? "enabled" : "disabled")")
+            ActionLog.live.write("login item: \(enable ? "enabled" : "disabled")")
             if enable && LaunchAtLogin.needsApproval {
-                ActionLog.write("login item: waiting for approval in Login Items")
+                ActionLog.live.write("login item: waiting for approval in Login Items")
                 LaunchAtLogin.openApprovalSettings()
             }
         } catch {
-            ActionLog.write("login item: \(enable ? "enable" : "disable") failed: \(error.localizedDescription)")
+            ActionLog.live.write("login item: \(enable ? "enable" : "disable") failed: \(error.localizedDescription)")
             NSAlert(error: error).runModal()
         }
         refresh()

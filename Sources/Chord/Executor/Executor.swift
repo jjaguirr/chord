@@ -62,6 +62,8 @@ extension ScreenRect {
 /// them, rounded to integers. The Executor never reads a frame back to compute
 /// the next one; the previous frame comes from the backend's own reply.
 public actor Executor {
+    private let logSink: (@Sendable (String) -> Void)?
+
     private let backend: any WorkspaceBackend
     private var undoStack: [[Change]] = []
     /// Window ids, least to most recently focused. Per-workspace history is this
@@ -73,9 +75,11 @@ public actor Executor {
     /// Every applied, undone, or failed change, in order.
     public private(set) var log: [String] = []
 
-    public init(backend: any WorkspaceBackend) {
+    public init(backend: any WorkspaceBackend, logSink: (@Sendable (String) -> Void)? = nil) {
         self.backend = backend
+        self.logSink = logSink
     }
+
 
     // MARK: Plans
 
@@ -143,7 +147,7 @@ public actor Executor {
         let planned = changes(from: try plan.actions(from: [id: window.place], requested: [action]))
         guard !planned.isEmpty else { return [] }
         let applied = try await run(planned)
-        log.append(action.logLine)
+        appendLog(action.logLine)
         undoStack.append(applied)
         return applied
     }
@@ -159,7 +163,7 @@ public actor Executor {
             do {
                 reverted.append(contentsOf: try await run([change.inverse], label: "undo"))
             } catch BackendError.unknownWindow(let id) {
-                log.append("undo skipped: window \(id.rawValue) is gone")
+                appendLog("undo skipped: window \(id.rawValue) is gone")
             } catch {
                 undoStack.append(Array(transaction[...index]))
                 throw error
@@ -193,7 +197,7 @@ public actor Executor {
                 .sorted { (rank[$0.id] ?? 0) < (rank[$1.id] ?? 0) }
             for float in floats {
                 try await backend.raiseWindow(float.id)
-                log.append("raise floating window \(float.id.rawValue)")
+                appendLog("raise floating window \(float.id.rawValue)")
             }
         }
         return applied[0]
@@ -243,7 +247,7 @@ public actor Executor {
                     record(change, label: label)
                     continue
                 }
-                log.append("failed: \(change.logLine): \(error)")
+                appendLog("failed: \(change.logLine): \(error)")
                 if !applied.isEmpty, label == nil { undoStack.append(applied) }
                 throw error
             }
@@ -311,8 +315,13 @@ public actor Executor {
         }
     }
 
+    private func appendLog(_ line: String) {
+        log.append(line)
+        logSink?(line)
+    }
+
     private func record(_ change: Change, label: String?) {
-        log.append(label.map { "\($0): \(change.logLine)" } ?? change.logLine)
+        appendLog(label.map { "\($0): \(change.logLine)" } ?? change.logLine)
         switch change {
         case .focus(let from, let to):
             if let from {
