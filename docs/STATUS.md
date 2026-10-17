@@ -58,7 +58,8 @@ plus Rectangle, we stop and write down why.
 | Global hotkeys | Not run: Terminal/iTerm/Vim fixtures absent; Vim-specific behavior is manual and unverified by the probe |
 | Window birth size | Not run: no fresh-window fixture |
 | Unfold frame rate / 20-window Spread | Not run: 20-window fixture absent |
-| Socket latency | FAIL: AeroSpace server disabled; 100-request p95 not measured |
+| Socket latency (spike 6, CLI per request) | FAIL: p95 53.497ms > 16.67ms with CLI spawn included (server enabled on re-run) |
+| Socket latency (spike 6b, direct socket) | Not run: probe added (`spikes/socket-latency-direct.py`, needs `python3`); 100-request measurement owed to the captain |
 | Mod+0 hold detector | Not run: controlled resting-finger trial absent |
 
 Detailed substrate evidence and the provisional backend recommendation are in
