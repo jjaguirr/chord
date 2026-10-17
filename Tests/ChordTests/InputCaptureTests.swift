@@ -474,17 +474,6 @@ struct InputCaptureTests {
         #expect(received.intents == [.spread])
     }
 
-    @Test func placeHandlerSeesOnlyPlaceKeyDowns() {
-        let h = Harness()
-        let received = HandlerBox()
-        h.capture.placeHandler = { received.places.append($0) }
-        h.carbon.send("Digit3", shift: true)
-        h.carbon.send("Digit3", shift: true, .up)
-        h.carbon.send("KeyH")
-
-        #expect(received.places.map(\.label) == ["Option+Shift+3"])
-    }
-
     // MARK: Status text
 
     @Test func renderNamesEveryKeyItsStatusAndTheCounters() {
@@ -507,5 +496,4 @@ struct InputCaptureTests {
 
 private final class HandlerBox {
     var intents: [KeyIntent] = []
-    var places: [HotkeyBinding] = []
 }

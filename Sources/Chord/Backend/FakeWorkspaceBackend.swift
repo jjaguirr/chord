@@ -23,18 +23,11 @@ public actor FakeWorkspaceBackend: WorkspaceBackend {
     private var connected = true
     private var faults: [FakeFault] = []
 
-    /// Real workspaces substrates have places; pass false to behave like plain Accessibility.
-    public nonisolated let supportsPlaces: Bool
-
-    public init(
-        monitors: [MonitorSnapshot], windows: [WindowSnapshot], focusedWindow: WindowID? = nil,
-        supportsPlaces: Bool = true
-    ) {
+    public init(monitors: [MonitorSnapshot], windows: [WindowSnapshot], focusedWindow: WindowID? = nil) {
         self.monitors = monitors
         self.windows = windows
         self.focused = focusedWindow
         self.stacking = windows.map(\.id)
-        self.supportsPlaces = supportsPlaces
     }
 
     /// Queues faults; each applies to the next call that reaches the backend.
@@ -50,8 +43,7 @@ public actor FakeWorkspaceBackend: WorkspaceBackend {
 
     @discardableResult
     public func moveWindow(_ id: WindowID, to place: Place) async throws -> Place {
-        guard supportsPlaces else { throw BackendError.unsupported("places") }
-        return try mutate(id) { index in
+        try mutate(id) { index in
             let previous = windows[index].place
             windows[index] = windows[index].with(place: place)
             return previous

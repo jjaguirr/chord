@@ -323,9 +323,6 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         capture.intentHandler = { intents in
             MainActor.assumeIsolated { motion.submit(.intents(intents)) }
         }
-        capture.placeHandler = { binding in
-            MainActor.assumeIsolated { motion.submit(.place(binding)) }
-        }
         inputCapture = capture
         inputMonitoringGranted = SystemInputPermissions().inputMonitoringGranted
         capture.start()

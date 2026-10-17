@@ -54,12 +54,12 @@ struct WindowMotionTests {
         }
     }
 
-    private func makeRig(supportsPlaces: Bool = false) -> Rig {
+    private func makeRig() -> Rig {
         let backend = FakeWorkspaceBackend(
             monitors: [MonitorSnapshot(id: MonitorID(1), bounds: visible, isPrimary: true)],
             windows: [WindowSnapshot(
                 id: WindowID(1), appName: "App", place: .bench, isFloating: true, bounds: start)],
-            focusedWindow: WindowID(1), supportsPlaces: supportsPlaces)
+            focusedWindow: WindowID(1))
         let log = MotionLog()
         let executor = Executor(backend: backend, logSink: { log.append($0) })
         let clock = MotionClock()
@@ -182,44 +182,6 @@ struct WindowMotionTests {
         #expect(rig.log.has("look: moving focus is not wired"))
         #expect(rig.log.has("spread: not wired"))
         #expect(try await rig.bounds() == start)
-    }
-
-    // MARK: Places
-
-    private func placeBinding(_ digit: Int, shift: Bool = true) throws -> HotkeyBinding {
-        let catalog = HotkeyCatalog(keys: KeyBindings.defaults)
-        return try #require(catalog.binding(for: InputKey(code: "Digit\(digit)"), shift: shift))
-    }
-
-    @Test func placingOnABackendWithoutPlacesIsLoggedAndTheWindowStays() async throws {
-        let rig = makeRig(supportsPlaces: false)
-        await rig.motion.handle(.place(try placeBinding(3)))
-
-        #expect(rig.log.has("place:", "no places"))
-        #expect(try await rig.backend.snapshot().windows.first?.place == .bench)
-    }
-
-    @Test func placingOnABackendWithPlacesMovesTheFocusedWindow() async throws {
-        let rig = makeRig(supportsPlaces: true)
-        await rig.motion.handle(.place(try placeBinding(3)))
-
-        #expect(try await rig.backend.snapshot().windows.first?.place == .workspace(.three))
-    }
-
-    @Test func aPlaceKeyThatNamesNoWorkspaceLeavesTheWindowAlone() async throws {
-        let rig = makeRig(supportsPlaces: true)
-        await rig.motion.handle(.place(try placeBinding(9)))
-
-        #expect(rig.log.has("names no place a window can be sent to"))
-        #expect(try await rig.backend.snapshot().windows.first?.place == .bench)
-    }
-
-    @Test func optionDigitWithoutShiftIsNotWired() async throws {
-        let rig = makeRig(supportsPlaces: true)
-        await rig.motion.handle(.place(try placeBinding(3, shift: false)))
-
-        #expect(rig.log.has("not wired"))
-        #expect(try await rig.backend.snapshot().windows.first?.place == .bench)
     }
 }
 

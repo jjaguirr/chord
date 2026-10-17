@@ -324,19 +324,6 @@ public actor Executor {
         return origin
     }
 
-    /// Moves the focused window to `place`. A backend without places logs it and
-    /// leaves the window alone, returning `[]`.
-    @discardableResult
-    public func placeFocused(_ place: Place) async throws -> [Change] {
-        guard backend.supportsPlaces else {
-            appendLog("place: this backend has no places; window left alone")
-            return []
-        }
-        let context = try await focusedWindowContext()
-        let plan = try Plan(assignments: [Assignment(windowID: context.id, place: place, reason: .pinned)])
-        return try await apply(plan)
-    }
-
     private static func monitorBounds(holding rect: ScreenRect, in snapshot: BackendSnapshot) -> ScreenRect? {
         ScreenGeometry.visibleFrame(holding: rect, monitors: snapshot.monitors)
     }

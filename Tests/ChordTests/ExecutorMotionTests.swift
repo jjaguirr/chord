@@ -9,14 +9,13 @@ struct ExecutorMotionTests {
     private let start = ScreenRect(x: 100, y: 100, width: 333, height: 471)
 
     private func makeBackend(
-        frame: ScreenRect? = nil, focused: Bool = true, supportsPlaces: Bool = true
+        frame: ScreenRect? = nil, focused: Bool = true
     ) -> FakeWorkspaceBackend {
         FakeWorkspaceBackend(
             monitors: [MonitorSnapshot(id: MonitorID(1), bounds: visible, isPrimary: true)],
             windows: [WindowSnapshot(
                 id: WindowID(1), appName: "App", place: .bench, isFloating: true, bounds: frame ?? start)],
-            focusedWindow: focused ? WindowID(1) : nil,
-            supportsPlaces: supportsPlaces)
+            focusedWindow: focused ? WindowID(1) : nil)
     }
 
     private func bounds(_ backend: FakeWorkspaceBackend) async throws -> ScreenRect? {
@@ -182,29 +181,5 @@ struct ExecutorMotionTests {
         #expect(abs((after.x + after.width / 2) - (start.x + start.width / 2)) <= 1)
         try await executor.undo()
         #expect(try await bounds(backend) == start)
-    }
-
-    // MARK: Places
-
-    @Test func placingOnABackendWithoutPlacesLogsAndLeavesTheWindow() async throws {
-        let backend = makeBackend(supportsPlaces: false)
-        let executor = Executor(backend: backend)
-
-        let changes = try await executor.placeFocused(.workspace(.three))
-
-        #expect(changes == [])
-        #expect(try await backend.snapshot().windows.first?.place == .bench)
-        #expect(await executor.log.contains { $0.hasPrefix("place:") && $0.contains("no places") })
-    }
-
-    @Test func placingMovesTheFocusedWindowWhenTheBackendHasPlaces() async throws {
-        let backend = makeBackend()
-        let executor = Executor(backend: backend)
-
-        try await executor.placeFocused(.workspace(.three))
-        #expect(try await backend.snapshot().windows.first?.place == .workspace(.three))
-
-        try await executor.undo()
-        #expect(try await backend.snapshot().windows.first?.place == .bench)
     }
 }

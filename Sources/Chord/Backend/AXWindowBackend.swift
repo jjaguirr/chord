@@ -15,8 +15,6 @@ import Foundation
 ///
 /// Never prompts: without Accessibility trust every call throws `.notConnected`.
 public final class AXWindowBackend: WorkspaceBackend, @unchecked Sendable {
-    public let supportsPlaces = false
-
     private struct Entry {
         let id: Int
         let element: AXUIElement
@@ -48,7 +46,7 @@ public final class AXWindowBackend: WorkspaceBackend, @unchecked Sendable {
 
     @discardableResult
     public func moveWindow(_ id: WindowID, to place: Place) async throws -> Place {
-        throw BackendError.unsupported("places: the Accessibility backend has no workspaces")
+        throw BackendError.unknown(reason: "the Accessibility backend has no places")
     }
 
     @discardableResult

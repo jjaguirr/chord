@@ -11,8 +11,8 @@ windows live and **how you move between them** — and leaves **size** to you.
 > Accessibility granted, Option+0 taps run Unfold, Option+R then h/j/k/l reshapes,
 > and Option+Shift+h/j/k/l carries the focused window, through the Accessibility API
 > directly. Each move is logged and undoable in the Executor (no undo key yet). Not yet
-> verified on live windows. Look, Spread, and places are not wired: a place key logs
-> and leaves the window alone.
+> verified on live windows. Look, Spread, and places are not wired: a place key only
+> logs.
 
 ## The bet
 

@@ -22,8 +22,8 @@ struct InputGeometry: Equatable {
 
 /// Takes events from the Carbon and event-tap sources, decides which path owns each
 /// hotkey, feeds the `KeyStateMachine`, and logs every event with the path that caught it.
-/// It makes no window call: intents go to `intentHandler` and place keys to `placeHandler`
-/// (`WindowMotion`, then the Executor).
+/// It makes no window call: intents go to `intentHandler` (`WindowMotion`, then the
+/// Executor); place keys are logged only.
 ///
 /// Ownership: a hotkey Carbon registered is owned by Carbon; one it refused is owned by
 /// the tap. The tap also watches Carbon-owned keys without consuming them. If the tap
@@ -75,10 +75,6 @@ final class InputCapture: HotkeySourceDelegate {
     /// Receives every non-empty batch of intents the state machine produces, after the
     /// event is logged. The app wires it to `WindowMotion`; without a handler nothing moves.
     var intentHandler: (([KeyIntent]) -> Void)?
-
-    /// Receives the key-down of every place binding (Option[+Shift]+1-9 and the
-    /// configured tier/vault keys). Place keys have no state-machine input.
-    var placeHandler: ((HotkeyBinding) -> Void)?
 
     init(
         config: Config,
@@ -369,7 +365,6 @@ final class InputCapture: HotkeySourceDelegate {
         log("input: \(phase == .down ? "down" : "up") \(binding.label) path=\(path.rawValue) "
             + "role=\(binding.role.name) intent=\(Self.describe(intents))\(note.map { " (\($0))" } ?? "")")
         if !intents.isEmpty { intentHandler?(intents) }
-        if binding.role == .place, phase == .down { placeHandler?(binding) }
     }
 
     private func updateTickRequest() {

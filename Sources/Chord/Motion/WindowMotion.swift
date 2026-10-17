@@ -12,8 +12,6 @@ import Foundation
 /// - Reshape: one log-space aspect/area step per Option+R+hjkl press.
 /// - Carry: one move per carry intent, with the edge-magnet distance the state machine
 ///   already computed.
-/// - Places: Option+Shift+digit asks the Executor to place the focused window, which
-///   logs and leaves it alone on a backend without places.
 ///
 /// Commands run strictly one at a time, in the order they arrive, so a press never
 /// interleaves with a frame step. Main thread only.
@@ -21,7 +19,6 @@ import Foundation
 final class WindowMotion {
     enum Command: Equatable {
         case intents([KeyIntent])
-        case place(HotkeyBinding)
         /// Internal: advance the Unfold animation to now.
         case tick
     }
@@ -102,8 +99,6 @@ final class WindowMotion {
         switch command {
         case .intents(let intents):
             for intent in intents { await handle(intent) }
-        case .place(let binding):
-            await place(binding)
         case .tick:
             await tick()
         }
@@ -136,23 +131,6 @@ final class WindowMotion {
             log("spread: not wired to windows yet; nothing changed")
         case .abortCharge:
             log("abort: Option+0 charge aborted; nothing changed")
-        }
-    }
-
-    private func place(_ binding: HotkeyBinding) async {
-        guard binding.shift else {
-            log("place: \(binding.label) (go to place) is not wired to windows yet; nothing changed")
-            return
-        }
-        guard let number = Int(binding.key.label), let workspace = Workspace(rawValue: number) else {
-            log("place: \(binding.label) names no place a window can be sent to; left alone")
-            return
-        }
-        await finishRun(reason: "place")
-        do {
-            try await executor.placeFocused(.workspace(workspace))
-        } catch {
-            log("place: \(Self.describe(error))")
         }
     }
 
