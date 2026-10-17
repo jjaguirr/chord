@@ -58,7 +58,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         accessibilityGranted = AccessibilityPermission.isGranted
-        ActionLog.write("launch: accessibility \(accessibilityGranted ? "granted" : "missing")")
+        ActionLog.live.write("launch: accessibility \(accessibilityGranted ? "granted" : "missing")")
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.menu = menu
@@ -212,7 +212,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let granted = AccessibilityPermission.isGranted
         guard granted != accessibilityGranted else { return }
         accessibilityGranted = granted
-        ActionLog.write(granted ? "permission: accessibility granted" : "permission: accessibility revoked")
+        ActionLog.live.write(granted ? "permission: accessibility granted" : "permission: accessibility revoked")
         refresh()
     }
 
@@ -231,26 +231,26 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Not Now")
         guard alert.runModal() == .alertFirstButtonReturn else {
-            ActionLog.write("permission: explanation dismissed")
+            ActionLog.live.write("permission: explanation dismissed")
             return
         }
         // The prompt variant registers Chord in the Accessibility list so its switch exists.
         AccessibilityPermission.requestWithPrompt()
         AccessibilityPermission.openSettingsPane()
-        ActionLog.write("permission: requested accessibility; opened settings")
+        ActionLog.live.write("permission: requested accessibility; opened settings")
     }
 
     @objc private func togglePause() {
         // Inverse: selecting it again resumes. Nothing is registered yet, so pause has no
         // hotkey to release; later hotkey work must check this flag before consuming keys.
         paused.toggle()
-        ActionLog.write(paused ? "pause: paused" : "pause: resumed")
+        ActionLog.live.write(paused ? "pause: paused" : "pause: resumed")
         refresh()
     }
 
     @objc private func openLogFolder() {
-        ActionLog.write("log folder: opened")
-        NSWorkspace.shared.open(ActionLog.directory)
+        ActionLog.live.write("log folder: opened")
+        NSWorkspace.shared.open(ActionLog.live.directory)
     }
 
     @objc private func copyDiagnostics() {
@@ -259,7 +259,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let text = DiagnosticsCollector.render()
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        ActionLog.write("diagnostics: copied to clipboard")
+        ActionLog.live.write("diagnostics: copied to clipboard")
     }
 
     private func refreshCrashReports() {
@@ -278,7 +278,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func revealCrashReport(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
-        ActionLog.write("crash report: revealed \(url.lastPathComponent)")
+        ActionLog.live.write("crash report: revealed \(url.lastPathComponent)")
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
@@ -287,13 +287,13 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let enable = !LaunchAtLogin.isEnabled
         do {
             try LaunchAtLogin.setEnabled(enable)
-            ActionLog.write("login item: \(enable ? "enabled" : "disabled")")
+            ActionLog.live.write("login item: \(enable ? "enabled" : "disabled")")
             if enable && LaunchAtLogin.needsApproval {
-                ActionLog.write("login item: waiting for approval in Login Items")
+                ActionLog.live.write("login item: waiting for approval in Login Items")
                 LaunchAtLogin.openApprovalSettings()
             }
         } catch {
-            ActionLog.write("login item: \(enable ? "enable" : "disable") failed: \(error.localizedDescription)")
+            ActionLog.live.write("login item: \(enable ? "enable" : "disable") failed: \(error.localizedDescription)")
             NSAlert(error: error).runModal()
         }
         refresh()

@@ -11,9 +11,9 @@ enum DiagnosticsCollector {
     }
 
     /// Chord's crash reports, newest first, at most `LogPolicy.crashReportCount`.
-    static func recentCrashReports() -> [URL] {
+    static func recentCrashReports(in directory: URL = crashReportsDirectory) -> [URL] {
         let urls = (try? FileManager.default.contentsOfDirectory(
-            at: crashReportsDirectory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+            at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
         let chordNames = Set(DiagnosticsReport.chordCrashReports(urls.map(\.lastPathComponent)))
         return urls
             .filter { chordNames.contains($0.lastPathComponent) }
@@ -22,19 +22,21 @@ enum DiagnosticsCollector {
             .map { $0 }
     }
 
-    static func render() -> String {
+    static func render(
+        logFileURL: URL = ActionLog.live.fileURL,
+        crashReportsDirectory: URL = crashReportsDirectory
+    ) -> String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
             ?? "unknown (not packaged)"
-        let log = (try? String(contentsOf: ActionLog.fileURL, encoding: .utf8)) ?? ""
+        let log = (try? String(contentsOf: logFileURL, encoding: .utf8)) ?? ""
         return DiagnosticsReport.render(
             chordVersion: version,
             macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
-            // The pinned tag is what Chord expects; no substrate is wired, so its health is not observed.
             aerospaceVersion: "\(Config.defaults.backend.aerospaceTag) (pinned)",
             aerospaceHealth: "not connected; no substrate is wired in this build",
             accessibilityGranted: AccessibilityPermission.isGranted,
             config: Config.defaults,
-            crashReports: recentCrashReports().map(\.lastPathComponent),
+            crashReports: recentCrashReports(in: crashReportsDirectory).map(\.lastPathComponent),
             logLines: DiagnosticsReport.lastLines(of: log, limit: LogPolicy.diagnosticsLineCount))
     }
 
@@ -42,3 +44,4 @@ enum DiagnosticsCollector {
         (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
     }
 }
+

@@ -42,9 +42,19 @@ struct DiagnosticsTests {
         #expect(LogPolicy.shouldRotate(currentBytes: LogPolicy.maxBytes - 10, incomingBytes: 11))
     }
 
-    @Test("an empty file never rotates, so one oversized line is still written")
-    func emptyFileDoesNotRotate() {
-        #expect(!LogPolicy.shouldRotate(currentBytes: 0, incomingBytes: LogPolicy.maxBytes * 2))
+    @Test("messages are clipped at the UTF-8 byte limit")
+    func messagesClipAtByteLimit() {
+        let clipped = LogPolicy.clipped(String(repeating: "x", count: LogPolicy.maxLineBytes + 1))
+        #expect(clipped.utf8.count == LogPolicy.maxLineBytes)
+        #expect(LogPolicy.clipped("short") == "short")
+    }
+
+    @Test("clipping stops before a partial UTF-8 scalar")
+    func clippingPreservesUTF8() {
+        let message = String(repeating: "a", count: LogPolicy.maxLineBytes - 1) + "é"
+        let clipped = LogPolicy.clipped(message)
+        #expect(clipped.utf8.count == LogPolicy.maxLineBytes - 1)
+        #expect(clipped == String(repeating: "a", count: LogPolicy.maxLineBytes - 1))
     }
 
     @Test("last lines are the tail, without the empty entry after a final newline")

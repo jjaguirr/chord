@@ -3,6 +3,8 @@
 public enum LogPolicy {
     /// Size at which the active log file rotates.
     public static let maxBytes = 1_048_576
+    /// Maximum UTF-8 bytes retained from one log message.
+    public static let maxLineBytes = 4096
     /// Rotated generations kept beside the active file, so disk use is bounded by
     /// `maxBytes * (archiveCount + 1)`.
     public static let archiveCount = 2
@@ -11,8 +13,20 @@ public enum LogPolicy {
     /// Crash reports listed in the diagnostics bundle and the menu.
     public static let crashReportCount = 5
 
+    public static func clipped(_ message: String) -> String {
+        var scalars = String.UnicodeScalarView()
+        var byteCount = 0
+        for scalar in message.unicodeScalars {
+            let scalarBytes = scalar.utf8.count
+            guard byteCount + scalarBytes <= maxLineBytes else { break }
+            scalars.append(scalar)
+            byteCount += scalarBytes
+        }
+        return String(scalars)
+    }
+
     /// Whether appending `incomingBytes` to a file of `currentBytes` must rotate it
-    /// first. An empty file never rotates, so one oversized line is still written.
+    /// first.
     public static func shouldRotate(currentBytes: Int, incomingBytes: Int) -> Bool {
         currentBytes > 0 && currentBytes + incomingBytes > maxBytes
     }
