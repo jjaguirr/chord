@@ -20,110 +20,144 @@ public protocol UnfoldClock {
 }
 
 /// Timing for the Unfold move (issue #11).
+///
+/// Unfold is a press-and-timer stepper, not an autonomous grow: the first press
+/// shrinks to the baby A5 size, every further press inside the timer window
+/// steps one size up the `frame(t)` path, and an expired timer returns to idle.
 public struct UnfoldConfig: Equatable, Sendable {
-    /// Current rect -> `frame(0)`, seconds.
+    /// ASSUMPTION (captain will tune): time after a press in which another press
+    /// steps up instead of resetting. Config key `unfold_step_window_ms` is
+    /// wired later.
+    public static let defaultStepWindow = 0.6
+
+    /// Current rect -> A5 (`frame(0)`) on the first press, seconds.
     public var shrinkDuration: Double
-    /// A5 pause at S1, seconds. Skipped when S1 does not fit inside S2.
-    public var holdDuration: Double
-    /// `t` from 0 to 1, seconds, not counting the hold.
-    public var growDuration: Double
+    /// Ease between two steps, seconds.
+    public var stepDuration: Double
+    /// Timer restarted by every press, seconds.
+    public var stepWindow: Double
+    /// Number of sizes, A5 included: step `k` sits at `t = k / (stepCount - 1)`.
+    public var stepCount: Int
     /// Passed to `frame()`.
     public var margin: Double
 
     public init(
         shrinkDuration: Double = 0.3,
-        holdDuration: Double = 0.2,
-        growDuration: Double = 2.4,
+        stepDuration: Double = 0.15,
+        stepWindow: Double = UnfoldConfig.defaultStepWindow,
+        stepCount: Int = 6,
         margin: Double = 0
     ) {
-        precondition(shrinkDuration > 0 && growDuration > 0, "durations must be positive")
-        precondition(holdDuration >= 0, "hold must not be negative")
+        precondition(shrinkDuration > 0 && stepDuration > 0, "durations must be positive")
+        precondition(stepWindow > 0, "step window must be positive")
+        precondition(stepCount >= 2, "need at least A5 and the largest size")
         self.shrinkDuration = shrinkDuration
-        self.holdDuration = holdDuration
-        self.growDuration = growDuration
+        self.stepDuration = stepDuration
+        self.stepWindow = stepWindow
+        self.stepCount = stepCount
         self.margin = margin
     }
 }
 
 public enum UnfoldPhase: Equatable, Sendable {
+    /// No timer running. The window keeps whatever size it has.
     case idle
+    /// First press: easing from the window's rect to A5.
     case shrink
-    case grow
+    /// A later press: easing to the next size.
+    case step
+    /// Eased to its size, timer still running.
+    case waiting
 }
 
-/// Pure Unfold state machine: `idle -> shrink -> grow -> idle`.
+/// Pure Unfold state machine: `idle -> shrink -> (step | waiting)* -> idle`.
 ///
 /// It never touches a window. The caller feeds it presses and ticks and applies
 /// the rects it returns through the Executor. The current rect lives in this
-/// state and is never read back from a window while an animation runs; only a
+/// state and is never read back from a window while the timer runs; only a
 /// press from `idle` takes the window's real rect.
 ///
-/// There is exactly one timeline, so animations can never stack. A press while
-/// running restarts `shrink` from the rect the animation is at right now. A
-/// press from `idle` (never started, or finished) starts fresh from the rect
-/// the caller reports.
+/// - Press from idle: ease from the window's rect to A5 (centered), start timer.
+/// - Press with the timer running: ease to the next size (clamped at the
+///   largest 16:9 that fits), restart timer. A press mid-ease retargets from the
+///   interpolated rect, so there is only ever one animation.
+/// - Timer expiry with no press: back to idle, window stays where it is; the
+///   next press starts again at A5.
 ///
-/// Elapsed time, not tick count, decides the rect: a late tick skips frames
-/// and lands where the timeline says.
+/// Elapsed time, not tick count, decides the rect.
 public struct UnfoldAnimator {
     public let config: UnfoldConfig
     private let clock: any UnfoldClock
 
     public private(set) var phase: UnfoldPhase = .idle
-    /// Last rect this animator produced, or nil before the first run.
+    /// Last rect this animator produced, or nil before the first press.
     public private(set) var currentRect: UnfoldRect?
+    /// Index of the size being eased to or rested at; 0 is A5.
+    public private(set) var step = 0
 
-    private var startTime = 0.0
+    private var easeStart = 0.0
+    private var easeDuration = 0.0
+    private var deadline = 0.0
     private var from = UnfoldRect(x: 0, y: 0, width: 0, height: 0)
+    private var to = UnfoldRect(x: 0, y: 0, width: 0, height: 0)
     private var screen = UnfoldRect(x: 0, y: 0, width: 0, height: 0)
-    private var holdSeconds = 0.0
 
     public init(config: UnfoldConfig = UnfoldConfig(), clock: any UnfoldClock) {
         self.config = config
         self.clock = clock
     }
 
-    /// Handles an Unfold press and returns the first rect to apply (the start of
-    /// `shrink`, i.e. the current rect).
+    /// Handles an Unfold press and returns the rect to apply now (the start of
+    /// the new ease, i.e. the current rect).
     ///
     /// - Parameters:
     ///   - window: the focused window's real rect. Used only when idle.
-    ///   - visibleFrame: visible frame of the window's own screen. Re-read on
-    ///     every press, so a window on another screen unfolds there.
+    ///   - visibleFrame: visible frame of the window's own screen. Used when the
+    ///     sequence starts; a running sequence stays on its screen.
     @discardableResult
     public mutating func press(window: UnfoldRect, visibleFrame: UnfoldRect) -> UnfoldRect {
         let now = clock.now()
+        refresh(at: now)
         let start: UnfoldRect
         if phase == .idle {
             start = window
+            screen = visibleFrame
+            step = 0
+            easeDuration = config.shrinkDuration
+            phase = .shrink
         } else {
-            start = rect(at: max(0, now - startTime)).rect
+            start = rect(at: now)
+            step = min(step + 1, config.stepCount - 1)
+            easeDuration = config.stepDuration
+            phase = .step
         }
         from = start
-        screen = visibleFrame
-        startTime = now
-        holdSeconds = holdApplies(on: visibleFrame) ? config.holdDuration : 0
-        phase = .shrink
+        to = place(t: Double(step) / Double(config.stepCount - 1))
+        easeStart = now
+        deadline = now + config.stepWindow
         currentRect = start
         return start
     }
 
     /// Advances to the clock's now. Returns the rect to apply, or nil when idle.
-    /// The final call of a run returns the exact `frame(1)` box and goes idle.
+    /// The tick that finds the timer expired returns the final rect and goes idle.
     public mutating func tick() -> UnfoldRect? {
         guard phase != .idle else { return nil }
-        let sample = rect(at: max(0, clock.now() - startTime))
-        phase = sample.phase
-        currentRect = sample.rect
-        return sample.rect
+        let now = clock.now()
+        let r = rect(at: now)
+        refresh(at: now)
+        currentRect = r
+        return r
     }
 
     // MARK: Timeline
 
-    private func holdApplies(on visible: UnfoldRect) -> Bool {
-        let s1 = Unfold.largeStop
-        let s2 = frame(1, screenW: visible.width, screenH: visible.height, margin: config.margin)
-        return !(s1.w > s2.w || s1.h > s2.h)
+    /// Updates `phase` for time `now`.
+    private mutating func refresh(at now: Double) {
+        guard phase != .idle else { return }
+        let easing = now - easeStart < easeDuration
+        if easing { return }
+        phase = now >= deadline ? .idle : .waiting
     }
 
     private func place(t: Double) -> UnfoldRect {
@@ -131,33 +165,15 @@ public struct UnfoldAnimator {
         return UnfoldRect(x: screen.x + f.x, y: screen.y + f.y, width: f.w, height: f.h)
     }
 
-    private func rect(at elapsed: Double) -> (rect: UnfoldRect, phase: UnfoldPhase) {
-        let shrink = config.shrinkDuration
-        if elapsed < shrink {
-            let u = smootherstep(elapsed / shrink)
-            let to = place(t: 0)
-            return (
-                UnfoldRect(
-                    x: from.x + (to.x - from.x) * u,
-                    y: from.y + (to.y - from.y) * u,
-                    width: from.width + (to.width - from.width) * u,
-                    height: from.height + (to.height - from.height) * u
-                ),
-                .shrink
-            )
-        }
-        let g = elapsed - shrink
-        let grow = config.growDuration
-        let kneeEnd = grow * Unfold.knot
-        let t: Double
-        if g < kneeEnd {
-            t = g / grow
-        } else if g < kneeEnd + holdSeconds {
-            t = Unfold.knot
-        } else {
-            t = (g - holdSeconds) / grow
-        }
-        if t >= 1 { return (place(t: 1), .idle) }
-        return (place(t: t), .grow)
+    private func rect(at now: Double) -> UnfoldRect {
+        let p = min(max((now - easeStart) / easeDuration, 0), 1)
+        if p >= 1 { return to }
+        let u = smootherstep(p)
+        return UnfoldRect(
+            x: from.x + (to.x - from.x) * u,
+            y: from.y + (to.y - from.y) * u,
+            width: from.width + (to.width - from.width) * u,
+            height: from.height + (to.height - from.height) * u
+        )
     }
 }
