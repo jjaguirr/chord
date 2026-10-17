@@ -69,24 +69,19 @@ public struct Timing: Equatable, Sendable {
     public let a5HoldMs: Int
     /// Presses within this window step an Unfold up; after it expires the next press resets to A5.
     public let unfoldStepWindowMs: Int
-    /// Number of Unfold size steps, A5 included.
-    public let unfoldSteps: Int
 
     init(
-        holdMs: Int, tapMs: Int, chordWindowMs: Int, a5HoldMs: Int,
-        unfoldStepWindowMs: Int, unfoldSteps: Int
+        holdMs: Int, tapMs: Int, chordWindowMs: Int, a5HoldMs: Int, unfoldStepWindowMs: Int
     ) {
         self.holdMs = holdMs
         self.tapMs = tapMs
         self.chordWindowMs = chordWindowMs
         self.a5HoldMs = a5HoldMs
         self.unfoldStepWindowMs = unfoldStepWindowMs
-        self.unfoldSteps = unfoldSteps
     }
 
     public static let defaults = Timing(
-        holdMs: 700, tapMs: 250, chordWindowMs: 35, a5HoldMs: 200,
-        unfoldStepWindowMs: 600, unfoldSteps: 6)
+        holdMs: 700, tapMs: 250, chordWindowMs: 35, a5HoldMs: 200, unfoldStepWindowMs: 600)
 }
 
 /// Carry step sizes in pixels for held-direction repeats.
@@ -226,7 +221,7 @@ public struct Config: Equatable, Sendable {
             case "timing":
                 reader.reportUnknownKeys(in: table, known: [
                     "hold_ms", "tap_ms", "chord_window_ms", "a5_hold_ms",
-                    "unfold_step_window_ms", "unfold_steps",
+                    "unfold_step_window_ms",
                 ])
                 timing = reader.readTiming(table)
             case "carry":
@@ -270,7 +265,6 @@ public struct Config: Equatable, Sendable {
             "chord_window_ms = \(timing.chordWindowMs)",
             "a5_hold_ms = \(timing.a5HoldMs)",
             "unfold_step_window_ms = \(timing.unfoldStepWindowMs)",
-            "unfold_steps = \(timing.unfoldSteps)",
             "",
             "[carry]",
             "ramp_px = [\(carry.ramp.near), \(carry.ramp.middle), \(carry.ramp.far)]",
@@ -315,7 +309,6 @@ private struct ConfigReader {
     static let msRange = 1...5000
     static let pxRange = 1...500
     static let edgeRange = 0...500
-    static let unfoldStepsRange = 2...12
 
     mutating func reportUnknownKeys(in table: TOMLTable, known: [String]) {
         let knownSet = Set(known)
@@ -412,9 +405,7 @@ private struct ConfigReader {
             chordWindowMs: integer(table, "chord_window_ms", range: Self.msRange, default: d.chordWindowMs),
             a5HoldMs: integer(table, "a5_hold_ms", range: Self.msRange, default: d.a5HoldMs),
             unfoldStepWindowMs: integer(
-                table, "unfold_step_window_ms", range: Self.msRange, default: d.unfoldStepWindowMs),
-            unfoldSteps: integer(
-                table, "unfold_steps", range: Self.unfoldStepsRange, default: d.unfoldSteps))
+                table, "unfold_step_window_ms", range: Self.msRange, default: d.unfoldStepWindowMs))
     }
 
     mutating func readCarry(_ table: TOMLTable) -> Carry {

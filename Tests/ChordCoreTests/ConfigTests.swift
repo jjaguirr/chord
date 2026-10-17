@@ -22,7 +22,6 @@ struct ConfigTests {
         #expect(c.timing.chordWindowMs == 35)
         #expect(c.timing.a5HoldMs == 200)
         #expect(c.timing.unfoldStepWindowMs == 600)
-        #expect(c.timing.unfoldSteps == 6)
         #expect(c.carry.ramp == CarryRamp(near: 10, middle: 20, far: 30))
         #expect(c.carry.edgeMagnetPx == 30)
         #expect(c.backend.aerospaceTag == "v0.21.3-Beta")
@@ -49,7 +48,6 @@ struct ConfigTests {
         #expect(result.diagnostics.isEmpty)
         #expect(result.config.timing.holdMs == 900)
         #expect(result.config.timing.tapMs == 250)
-        #expect(result.config.timing.unfoldSteps == 6)
         #expect(result.config.keys == Config.defaults.keys)
     }
 
@@ -60,7 +58,6 @@ struct ConfigTests {
         left = "KeyA"
         vault = "Digit8"
         [timing]
-        unfold_steps = 12
         unfold_step_window_ms = 450
         [carry]
         ramp_px = [5, 15, 60]
@@ -72,7 +69,6 @@ struct ConfigTests {
         #expect(result.diagnostics.isEmpty)
         #expect(result.config.keys.left.code == "KeyA")
         #expect(result.config.keys.vault.code == "Digit8")
-        #expect(result.config.timing.unfoldSteps == 12)
         #expect(result.config.timing.unfoldStepWindowMs == 450)
         #expect(result.config.carry.ramp == CarryRamp(near: 5, middle: 15, far: 60))
         #expect(result.config.standingWishes == [
@@ -120,25 +116,17 @@ struct ConfigTests {
         #expect(high.diagnostics == [.outOfRange(line: 2, key: "hold_ms", min: 1, max: 5000)])
     }
 
-    @Test("unfold steps below 2 and above 12 are out of range")
-    func unfoldStepsOutOfRange() {
-        let low = load("[timing]\nunfold_steps = 1\n")
-        #expect(low.diagnostics == [.outOfRange(line: 2, key: "unfold_steps", min: 2, max: 12)])
-        #expect(low.config == Config.defaults)
-        let high = load("[timing]\nunfold_steps = 13\n")
-        #expect(high.diagnostics == [.outOfRange(line: 2, key: "unfold_steps", min: 2, max: 12)])
-    }
-
-    @Test("unfold steps at the bounds are accepted")
-    func unfoldStepsBounds() {
-        #expect(load("[timing]\nunfold_steps = 2\n").config.timing.unfoldSteps == 2)
-        #expect(load("[timing]\nunfold_steps = 12\n").config.timing.unfoldSteps == 12)
-    }
-
     @Test("unfold step window out of range is reported")
     func unfoldWindowOutOfRange() {
         let result = load("[timing]\nunfold_step_window_ms = 0\n")
         #expect(result.diagnostics == [.outOfRange(line: 2, key: "unfold_step_window_ms", min: 1, max: 5000)])
+        #expect(result.config == Config.defaults)
+    }
+
+    @Test("unfold_steps is not a config key; the ratio progression is fixed")
+    func unfoldStepsRemoved() {
+        let result = load("[timing]\nunfold_steps = 6\n")
+        #expect(result.diagnostics == [.unknownKey(line: 2, key: "unfold_steps")])
         #expect(result.config == Config.defaults)
     }
 
@@ -221,7 +209,7 @@ struct ConfigTests {
 
     @Test("diagnostics are sorted by line")
     func sortedDiagnostics() {
-        let result = load("[timing]\nhold_ms = 0\nunfold_steps = 99\n")
+        let result = load("[timing]\nhold_ms = 0\nunfold_step_window_ms = 0\n")
         #expect(result.diagnostics.map(\.line) == [2, 3])
     }
 
