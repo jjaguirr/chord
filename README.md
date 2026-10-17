@@ -4,11 +4,11 @@
 Chord is a keyboard-first window manager for macOS. It decides **where**
 windows live and **how you move between them** — and leaves **size** to you.
 
-> **Status: pre-alpha, app shell only.** Chord builds as a menu-bar agent
+> **Status: pre-alpha, app shell plus input capture.** Chord builds as a menu-bar agent
 > bundle (`scripts/build-app.sh`) with an Accessibility permission flow, a pause
-> switch, and launch at login. It is not yet a functioning window manager: no
-> window operations, hotkeys, or backend are wired in. The pure core includes a
-> timestamp-driven key state machine; integration into the app remains design-only.
+> switch, launch at login, and global Option hotkey capture that only logs: every
+> captured key and the intent the key state machine derives from it. It is not yet a
+> functioning window manager: no window operations or backend are wired in.
 
 ## The bet
 
@@ -53,7 +53,14 @@ requires the packaged `.app`. The shell adds a menu-bar item showing status
 (running, paused, or needs Accessibility permission), Pause/Resume, Launch at
 Login (off by default), Check for Updates… (a single GitHub Releases request;
 see the Privacy section of `docs/PRODUCT.md`), Open Log Folder, Copy Diagnostics,
-and a Recent Crash Reports submenu. Without Accessibility access it explains why,
+and a Recent Crash Reports submenu. **Input status** shows Accessibility and Input
+Monitoring state, whether the event tap is enabled, each hotkey's Carbon
+registration result (the OSStatus on failure), and event counters (including `carbon silent`,
+presses the event tap saw that Carbon never delivered; each is also logged as an
+`input: DIAGNOSTIC` line and no hotkey changes owner); **Copy Input
+Diagnostics** copies that plus recent `input:` log lines. A failed precondition (no
+permission, tap disabled by the system, a hotkey another app already holds) appears as
+one line under the status line and in the log. Without Accessibility access it explains why,
 opens System Settings, and re-checks every second. Log lines go to
 `~/Library/Logs/Chord/chord.log`. See the Privacy section of
 [`docs/PRODUCT.md`](docs/PRODUCT.md) for update-check behavior and configuration.

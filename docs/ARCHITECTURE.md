@@ -13,7 +13,7 @@ behavior is not yet validated. Chord reads window geometry itself. See the
 
 | Module | Pure? | Job |
 |---|---|---|
-| InputLayer | no | Registered Carbon hotkeys; CGEventTap fallback |
+| InputLayer | no | Registered Carbon hotkeys; CGEventTap fallback for keys Carbon cannot register, and a passive Carbon cross-check that only logs (`Sources/Chord/Input`). Behind a `HotkeySource` protocol; feeds KeyStateMachine and logs intents. Wires no windows yet |
 | KeyStateMachine | yes | Timestamped tap/hold, directional chords, carry ramp, reshape intents |
 | Picker | yes | Rects + direction vector → target window |
 | Unfold | yes | Pure `frame()` geometry and press/timer state machine |

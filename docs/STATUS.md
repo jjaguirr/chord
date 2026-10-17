@@ -8,7 +8,7 @@ They are estimates, not promises.
 | Piece | State |
 |---|---|
 | `hjkl` aim/chord prototype | Built (single HTML file, browser only) |
-| Swift package core | Built: `ChordCore` has pure `frame()`, Picker, Plan types, and a timestamp-driven KeyStateMachine (tap/hold, chords, carry, and reshape intents); tests cover core behavior. Executor window operations are implemented against the fake backend but are not wired into the executable; no hotkeys are implemented |
+| Swift package core | Built: `ChordCore` has pure `frame()`, Picker, Plan types, and a timestamp-driven KeyStateMachine (tap/hold, chords, carry, and reshape intents); tests cover core behavior. Executor window operations are implemented against the fake backend but are not wired into the executable |
 | `WorkspaceBackend` (C7 PR1, #8) | Built: protocol, deterministic `FakeWorkspaceBackend` with scripted faults, and contract tests against the fake (`Tests/ChordTests`). No real substrate: AeroSpace socket implementation is PR2, pending spike results |
 | Executor (C8, #9) | Built against the fake backend only: typed ChordCore actions for place, frame, focus, restore-home, and reshape (pure `reshapeAction` translates KeyStateMachine reshape intents into log-space aspect/area actions; Executor applies and undoes them, skipping undo if the window was resized since), applied by the Executor whitelist; frame rounding; undo for place, frame, focus, restore-home, and reshape; focus via single-window raise with floats re-raised above tiles; per-workspace focus history. `WorkspaceBackend` gained `applyFrame`, `raiseWindow`, a `Place`-typed `moveWindow` and stacking order. Executor tests cover the fake backend. Real AX AXRaise and AeroSpace behavior, real app minimum sizes, and the real visible frame (the backend only reports monitor bounds) are unverified; no hotkey capture or input loop routes Option+R then h/j/k/l to this translator |
 | App shell (#23) | Built; see [README](../README.md) for shell behavior and packaging details |
@@ -16,6 +16,7 @@ They are estimates, not promises.
 | Unfold animation | Pure `frame()` math and tests built; pure press-and-timer stepper (`UnfoldAnimator`) built (`UnfoldAnimator`, tests with fake clock); not wired to windows, fps not measured |
 | Config core (#24) | Built, pure: `Config` with defaults, a hand-written TOML-subset parser (`TOML.swift`), and typed diagnostics with line numbers. Any diagnostic yields defaults for the whole file. No agent or vault setting exists; `keys.vault` is a user binding only. Standing wishes are the only size-changing rule (`fullscreen`, `zoom`). Unfold step window is `[timing] unfold_step_window_ms`; Unfold step count is not configurable (fixed ratio progression A5, square, 4:3, 3:2, golden, 16:9). Parser and config tests are in `Tests/ChordCoreTests`; not run locally, CI is the oracle |
 | Diagnostics (#30) | Built; user-facing behavior and privacy are documented in [README](../README.md) and [PRODUCT](PRODUCT.md). Executor's optional log sink is not wired to a live shell Executor in this build. |
+| InputLayer capture (#58, first slice of #10) | Built in `Sources/Chord/Input`: Carbon `RegisterEventHotKey` for Option+0, Option+R, Option+1-9, Option+hjkl, their Shift variants, Option+backtick (and Shift) and Option+Tab, with a CGEventTap fallback for keys Carbon refuses to register. The tap also watches Carbon-owned keys without consuming them: a press the tap saw that Carbon did not deliver within 0.1 s is logged as a `DIAGNOSTIC` line and counted as `carbon silent`; ownership never changes. Every event is logged with key, modifiers, path (`carbon`/`tap`) and the resulting KeyIntent; nothing is wired to windows. Menu: Input status (permissions, tap state, per-key OSStatus, counters, one-line cause for any failed precondition) and Copy Input Diagnostics. Sources sit behind a `HotkeySource` protocol; `InputCaptureTests` drive fakes with a fake clock. Never tested live: real capture, permissions, registration conflicts (see Unverified) |
 | Everything else | Design only |
 
 ## Bootstrap
@@ -27,9 +28,10 @@ behavior, generated landmarks, Picker rules and properties, Plan
 validation, decoding, fallback, and action reversibility, plus KeyStateMachine
 event sequences for tap/hold, direction chords, carry repeats and edge
 snapping, and reshape intents. Executor operations are tested through the fake
-backend but are not wired into the executable. No hotkeys are implemented.
+backend but are not wired into the executable. Hotkeys are captured and logged only
+(see the InputLayer row); no window operation is bound to a key.
 No real substrate is wired; see the `WorkspaceBackend` row above. The app
-shell does not yet integrate window operations or hotkeys.
+shell does not yet integrate window operations.
 
 `swift build` succeeds. `swift test` is currently blocked because this machine's Swift installation cannot load the `TestingMacros` plugin; the existing test target fails before tests execute.
 Picker supports came-from preference on exact primary-score ties; pathological layouts may remain non-reciprocal under the required tie order. Diagonal tie-breaking uses explicit pure screen bounds; horizontal z-fallback is a no-op when no spatial target exists.
@@ -56,6 +58,7 @@ plus Rectangle, we stop and write down why.
 | Window IDs across apps | Not run: no multi-app sample |
 | AX frame survival | Not run: no disposable app/window fixture |
 | Global hotkeys | Not run: Terminal/Vim fixtures absent; Vim-specific behavior is manual and unverified by the probe |
+| Live hotkey capture (InputLayer, #58) | Not run: needs a real Option keypress session. Unverified: Carbon registration results on this machine (conflicts with AeroSpace `alt-` bindings), whether Carbon delivers Option-only hotkeys on this macOS version, Input Monitoring/Accessibility state, Option+0 consumption (no character typed), tap re-enable after system disable. Read the answers from Input status and the `input:` log lines |
 | Window birth size | Not run: no fresh-window fixture |
 | Unfold frame rate / 20-window Spread | Not run: 20-window fixture absent |
 | Socket latency (spike 6, CLI per request) | FAIL: p95 53.497ms > 16.67ms with CLI spawn included (server enabled on re-run) |

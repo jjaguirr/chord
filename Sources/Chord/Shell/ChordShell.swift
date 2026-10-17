@@ -50,6 +50,12 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     private let crashMenu = NSMenu()
     private let crashItem = NSMenuItem(title: "Recent Crash Reports", action: nil, keyEquivalent: "")
+    private var inputCapture: InputCapture?
+    private var inputTimer: Timer?
+    private var inputMonitoringGranted = false
+    private let inputMenu = NSMenu()
+    private let inputProblemItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let inputStatusItem = NSMenuItem(title: "Input status", action: nil, keyEquivalent: "")
 
     private var status: ShellStatus {
         if !accessibilityGranted { return .needsPermission }
@@ -67,12 +73,17 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusLine.isEnabled = false
         menu.delegate = self
         menu.addItem(statusLine)
+        inputProblemItem.isEnabled = false
+        inputProblemItem.isHidden = true
+        menu.addItem(inputProblemItem)
         menu.addItem(.separator())
         menu.addItem(grantItem)
         menu.addItem(pauseItem)
         menu.addItem(loginItem)
         menu.addItem(availableUpdateItem)
         menu.addItem(checkUpdatesItem)
+        inputStatusItem.submenu = inputMenu
+        menu.addItem(inputStatusItem)
         menu.addItem(makeItem("Open Log Folder", #selector(openLogFolder)))
         menu.addItem(makeItem("Copy Diagnostics", #selector(copyDiagnostics)))
         crashItem.submenu = crashMenu
@@ -82,13 +93,17 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         quit.target = NSApp
         menu.addItem(quit)
         config = ConfigFile.load()
+        startInputCapture()
 
         refresh()
 
         // Polled for the app's lifetime so a grant (or revoke) lands without a restart.
         // AXIsProcessTrusted is a cheap read.
         permissionWatch = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.checkAccessibility() }
+            MainActor.assumeIsolated {
+                self?.checkAccessibility()
+                self?.checkInputMonitoring()
+            }
         }
 
         if config.updates.backgroundCheck {
@@ -102,6 +117,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         checkAccessibility()
+        checkInputMonitoring()
         refresh()
         refreshCrashReports()
     }
@@ -125,6 +141,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let release = availableRelease {
             availableUpdateItem.title = "Update available: \(release.tag)"
         }
+        refreshInputStatus()
     }
 
     @objc private func checkForUpdates() {
@@ -213,6 +230,16 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard granted != accessibilityGranted else { return }
         accessibilityGranted = granted
         ActionLog.live.write(granted ? "permission: accessibility granted" : "permission: accessibility revoked")
+        restartInputCapture(reason: "accessibility \(granted ? "granted" : "revoked")")
+        refresh()
+    }
+
+    private func checkInputMonitoring() {
+        let granted = SystemInputPermissions().inputMonitoringGranted
+        guard granted != inputMonitoringGranted else { return }
+        inputMonitoringGranted = granted
+        ActionLog.live.write(granted ? "permission: input monitoring granted" : "permission: input monitoring revoked")
+        restartInputCapture(reason: "input monitoring \(granted ? "granted" : "revoked")")
         refresh()
     }
 
@@ -241,10 +268,11 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func togglePause() {
-        // Inverse: selecting it again resumes. Nothing is registered yet, so pause has no
-        // hotkey to release; later hotkey work must check this flag before consuming keys.
+        // Inverse: selecting it again resumes. Pausing releases every hotkey so no key is
+        // consumed while paused; resuming re-runs the input self-check.
         paused.toggle()
         ActionLog.live.write(paused ? "pause: paused" : "pause: resumed")
+        if paused { inputCapture?.stop() } else { inputCapture?.start() }
         refresh()
     }
 
@@ -256,10 +284,99 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func copyDiagnostics() {
         // Read-only: writes only the clipboard, which Chord does not own, so there is no
         // inverse to record. The copy itself is logged.
-        let text = DiagnosticsCollector.render(config: config)
+        var text = DiagnosticsCollector.render(config: config)
+        if let capture = inputCapture { text += "\n\n" + capture.status().render() }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         ActionLog.live.write("diagnostics: copied to clipboard")
+    }
+
+    // MARK: Input capture
+
+    private func startInputCapture() {
+        let capture = InputCapture(
+            config: config, carbon: CarbonHotkeySource(), tap: EventTapSource(),
+            permissions: SystemInputPermissions(), clock: SystemInputClock(),
+            geometry: { MainActor.assumeIsolated { Self.screenGeometry() } },
+            logSink: { ActionLog.live.write($0) })
+        capture.tickRequest = { [weak self] needed in
+            MainActor.assumeIsolated { self?.setInputTicking(needed) }
+        }
+        inputCapture = capture
+        inputMonitoringGranted = SystemInputPermissions().inputMonitoringGranted
+        capture.start()
+    }
+
+    /// A permission changed: take the hotkeys again so the tap fallback follows the grant.
+    /// A paused app stays released.
+    private func restartInputCapture(reason: String) {
+        guard !paused else { return }
+        inputCapture?.restart(reason: reason)
+    }
+
+    /// Runs the hold/repeat timer only while a key is down or a tap press awaits Carbon's confirmation.
+    private func setInputTicking(_ needed: Bool) {
+        inputTimer?.invalidate()
+        inputTimer = nil
+        guard needed else { return }
+        let timer = Timer(timeInterval: 0.02, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.inputCapture?.tick() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        inputTimer = timer
+    }
+
+    private static func screenGeometry() -> InputGeometry {
+        guard let frame = NSScreen.main?.visibleFrame else { return .standIn }
+        return .centered(on: frame)
+    }
+
+    private func refreshInputStatus() {
+        guard let capture = inputCapture else { return }
+        let status = capture.status()
+
+        inputMenu.removeAllItems()
+        inputMenu.addItem(disabledItem(status.headline))
+        inputMenu.addItem(.separator())
+        for line in status.summaryLines { inputMenu.addItem(disabledItem(line)) }
+        if !status.problems.isEmpty {
+            inputMenu.addItem(.separator())
+            for problem in status.problems { inputMenu.addItem(disabledItem("Problem: \(problem.cause)")) }
+        }
+        let hotkeys = NSMenuItem(title: "Hotkeys", action: nil, keyEquivalent: "")
+        let hotkeyMenu = NSMenu()
+        for hotkey in status.hotkeys { hotkeyMenu.addItem(disabledItem(status.hotkeyLine(hotkey))) }
+        hotkeys.submenu = hotkeyMenu
+        inputMenu.addItem(.separator())
+        inputMenu.addItem(hotkeys)
+        inputMenu.addItem(makeItem("Copy Input Diagnostics", #selector(copyInputDiagnostics)))
+
+        if status.running, let problem = status.problems.first {
+            inputProblemItem.title = "Input: " + Self.oneLine(problem.cause)
+            inputProblemItem.toolTip = status.headline
+            inputProblemItem.isHidden = false
+        } else {
+            inputProblemItem.isHidden = true
+        }
+    }
+
+    private func disabledItem(_ title: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
+    }
+
+    private static func oneLine(_ text: String, limit: Int = 100) -> String {
+        text.count <= limit ? text : String(text.prefix(limit - 1)) + "…"
+    }
+
+    @objc private func copyInputDiagnostics() {
+        // Read-only, like Copy Diagnostics: writes only the clipboard.
+        guard let capture = inputCapture else { return }
+        let logText = (try? String(contentsOf: ActionLog.live.fileURL, encoding: .utf8)) ?? ""
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(capture.status().render(logText: logText), forType: .string)
+        ActionLog.live.write("input: diagnostics copied to clipboard")
     }
 
     private func refreshCrashReports() {
