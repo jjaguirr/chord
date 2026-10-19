@@ -13,10 +13,45 @@ enum AXReading {
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), messagingTimeout)
     }
 
-    /// The focused window of the focused application, if any.
+    private static let lookupState = LookupState()
+
+    /// The focused window of the focused application, if any. Logs the path that found it
+    /// (or why none was found) whenever that differs from the previous lookup's.
     static func focusedWindow() -> AXUIElement? {
-        guard let app = element(AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute) else { return nil }
-        return element(app, kAXFocusedWindowAttribute)
+        lookupState.find()
+    }
+
+    private final class LookupState: @unchecked Sendable {
+        private let lock = NSLock()
+        private var lastMessage = ""
+        private let lookup = FocusedWindowLookup(tree: LiveAXTree()) { app in
+            var pid: pid_t = 0
+            AXUIElementGetPid(app, &pid)
+            return Int(pid)
+        }
+
+        func find() -> AXUIElement? {
+            lock.lock()
+            defer { lock.unlock() }
+            let message: String
+            let window: AXUIElement?
+            switch lookup.find() {
+            case .found(let element, let via):
+                var pid: pid_t = 0
+                AXUIElementGetPid(element, &pid)
+                let name = NSRunningApplication(processIdentifier: pid)?.localizedName ?? "pid \(pid)"
+                message = "focus lookup: \(name): \(via)"
+                window = element
+            case .notFound(let reason):
+                message = "focus lookup: no window: \(reason)"
+                window = nil
+            }
+            if message != lastMessage {
+                lastMessage = message
+                ActionLog.live.write(message)
+            }
+            return window
+        }
     }
 
     /// The window's frame in top-left screen points, or nil when it is gone or unreadable.
