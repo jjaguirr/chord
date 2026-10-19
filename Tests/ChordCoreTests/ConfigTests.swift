@@ -21,7 +21,7 @@ struct ConfigTests {
         #expect(c.timing.tapMs == 250)
         #expect(c.timing.chordWindowMs == 35)
         #expect(c.timing.a5HoldMs == 200)
-        #expect(c.timing.unfoldStepWindowMs == 600)
+        #expect(c.timing.unfoldStepWindowMs == 1000)
         #expect(c.carry.ramp == CarryRamp(near: 10, middle: 20, far: 30))
         #expect(c.carry.edgeMagnetPx == 30)
         #expect(c.backend.aerospaceTag == "v0.21.3-Beta")

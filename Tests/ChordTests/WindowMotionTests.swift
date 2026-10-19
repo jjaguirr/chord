@@ -114,7 +114,7 @@ struct WindowMotionTests {
         await rig.tick(at: 0.5)
         await rig.press(at: 0.5)
         await rig.tick(at: 0.75)
-        await rig.tick(at: 2)  // past the 600 ms window: the run closes
+        await rig.tick(at: 2)  // past the 1000 ms window: the run closes
 
         #expect(rig.log.has("unfold: finished"))
         try await rig.executor.undo()
