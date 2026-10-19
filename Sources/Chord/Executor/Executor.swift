@@ -37,6 +37,7 @@ public enum Change: Equatable, Sendable {
 
 private extension ScreenRect {
     var actionRect: ActionRect { ActionRect(x: x, y: y, width: width, height: height) }
+    var pickerRect: PickerRect { PickerRect(x: x, y: y, width: width, height: height) }
 }
 
 private extension ActionRect {
@@ -111,6 +112,8 @@ public actor Executor {
     private var focusOrder: [Int] = []
     private var focusedID: Int?
     private var focusedPlace: Place?
+    /// The last Look move, so the opposite key can prefer the window it came from.
+    private var lastLook: (from: Int, to: Int)?
 
     /// Every applied, undone, or failed change, in order.
     public private(set) var log: [String] = []
@@ -403,6 +406,48 @@ public actor Executor {
             }
         }
         return applied[0]
+    }
+
+    /// What one Look press found and did.
+    public struct LookResult: Equatable, Sendable {
+        public let decision: LookDecision
+        /// The focus change, or nil when nothing was picked.
+        public let change: Change?
+    }
+
+    /// Look: focuses the nearest visible window in `direction` from the focused one, on any
+    /// monitor (see `Look`). Candidates are every window the backend reports visible;
+    /// ranking is the pure Picker's. The focus goes through `focus`, so it raises that one
+    /// window, is undoable, and is logged. The press, its candidates, and the pick (or why
+    /// there was none) get one log line. Nothing is picked, and nothing changes, when
+    /// there is no focused window, no other window, or no target that way.
+    @discardableResult
+    public func look(_ direction: PickDirection) async throws -> LookResult {
+        let snapshot = try await backend.visibleSnapshot()
+        guard let originID = snapshot.focusedWindow?.rawValue,
+            snapshot.windows.contains(where: { $0.id.rawValue == originID })
+        else { throw ExecutorError.noFocusedWindow }
+        let windows = snapshot.windows.map { window in
+            PickerWindow(
+                id: window.id.rawValue, rect: window.bounds.pickerRect,
+                layer: window.isFloating ? 1 : 0,
+                mru: (focusOrder.lastIndex(of: window.id.rawValue) ?? -1) + 1, coverage: 0)
+        }
+        let monitors = snapshot.monitors.map {
+            PickerMonitor(id: $0.id.rawValue, bounds: $0.bounds.pickerRect, isPrimary: $0.isPrimary)
+        }
+        let cameFrom = lastLook.flatMap { $0.to == originID ? $0.from : nil }
+        let decision = Look.decide(
+            from: originID, direction: direction, cameFrom: cameFrom, windows: windows, monitors: monitors)
+        let considered = "candidates \(decision.candidates.sorted())"
+        guard let target = decision.target else {
+            appendLog("look \(direction.keys): from window \(originID): nothing picked: \(decision.summary); \(considered)")
+            return LookResult(decision: decision, change: nil)
+        }
+        appendLog("look \(direction.keys): from window \(originID): \(decision.summary); \(considered)")
+        let change = try await focus(target)
+        lastLook = (originID, target)
+        return LookResult(decision: decision, change: change)
     }
 
     /// Window ids last focused in `place`, most recent first, for windows that exist.
