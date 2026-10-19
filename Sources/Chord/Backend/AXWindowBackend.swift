@@ -73,7 +73,7 @@ public final class AXWindowBackend: WorkspaceBackend, @unchecked Sendable {
     public func focusWindow(_ id: WindowID) async throws -> WindowID? {
         guard isTrusted() else { throw BackendError.notConnected }
         let window = try element(for: id)
-        let previous = AXReading.focusedWindow().map { WindowID(register($0)) }
+        let previous = AXReading.focusedWindow().map { WindowID(register([$0])[0]) }
         try check(writer.focus(window), "focus", id)
         return previous
     }
@@ -90,7 +90,7 @@ public final class AXWindowBackend: WorkspaceBackend, @unchecked Sendable {
     // MARK: Registry
 
     private func readSnapshot() -> BackendSnapshot {
-        let focusedID = AXReading.focusedWindow().map { WindowID(register($0)) }
+        let focusedID = AXReading.focusedWindow().map { WindowID(register([$0])[0]) }
         let current = remembered()
         var windows: [WindowSnapshot] = []
         var alive: Set<Int> = []
@@ -112,12 +112,12 @@ public final class AXWindowBackend: WorkspaceBackend, @unchecked Sendable {
         let monitors = monitors()
         let focused = AXReading.focusedWindow()
         let listed = AXWindowList.visibleWindows(monitors: monitors)
-        let capacity = max(Self.maxKnown, listed.count + 1)
-        let focusedID = focused.map { WindowID(register($0, capacity: capacity)) }
+        let elements = (focused.map { [$0] } ?? []) + listed
+        let registered = register(elements)
+        let focusedID = focused.map { _ in WindowID(registered[0]) }
         var ids = Set<Int>()
         var windows: [WindowSnapshot] = []
-        for element in (focused.map { [$0] } ?? []) + listed {
-            let id = register(element, capacity: capacity)
+        for (element, id) in zip(elements, registered) {
             guard ids.insert(id).inserted, let bounds = AXReading.frame(of: element) else { continue }
             windows.append(
                 WindowSnapshot(
@@ -129,17 +129,26 @@ public final class AXWindowBackend: WorkspaceBackend, @unchecked Sendable {
             focusedWindow: focusedID.flatMap { id in windows.contains { $0.id == id } ? id : nil })
     }
 
-    /// The id for `window`, assigning one the first time it is seen. Remembers at most
-    /// `capacity` windows; the oldest are forgotten first.
-    private func register(_ window: AXUIElement, capacity: Int = AXWindowBackend.maxKnown) -> Int {
+    /// The ids for `windows`, assigning one the first time each is seen. Remembers at most
+    /// `maxKnown` windows besides `windows` themselves; the oldest others are forgotten first.
+    private func register(_ windows: [AXUIElement]) -> [Int] {
         lock.lock()
         defer { lock.unlock() }
-        if let known = entries.first(where: { CFEqual($0.element, window) }) { return known.id }
-        let id = nextID
-        nextID += 1
-        entries.append(Entry(id: id, element: window))
-        if entries.count > capacity { entries.removeFirst(entries.count - capacity) }
-        return id
+        let ids = windows.map { window -> Int in
+            if let known = entries.first(where: { CFEqual($0.element, window) }) { return known.id }
+            let id = nextID
+            nextID += 1
+            entries.append(Entry(id: id, element: window))
+            return id
+        }
+        let keep = Set(ids)
+        var excess = entries.count - Self.maxKnown
+        entries.removeAll { entry in
+            guard excess > 0, !keep.contains(entry.id) else { return false }
+            excess -= 1
+            return true
+        }
+        return ids
     }
 
     private func remembered() -> [Entry] {
