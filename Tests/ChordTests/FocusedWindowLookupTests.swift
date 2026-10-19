@@ -136,8 +136,11 @@ struct FocusedWindowLookupTests {
 @Suite("Chromium detection")
 struct ChromiumDetectionTests {
     @Test func knownBrowserBundleIDsMatch() {
-        for id in ["com.google.Chrome", "com.google.Chrome.beta", "com.microsoft.edgemac", "com.brave.Browser",
-                   "company.thebrowser.Browser", "org.chromium.Chromium"] {
+        for id in ["com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.dev", "com.google.Chrome.canary",
+                   "com.microsoft.edgemac", "com.microsoft.edgemac.Beta", "com.brave.Browser", "com.brave.Browser.nightly",
+                   "company.thebrowser.Browser", "org.chromium.Chromium", "com.vivaldi.Vivaldi",
+                   "com.vivaldi.Vivaldi.snapshot", "com.operasoftware.Opera", "com.operasoftware.OperaGX",
+                   "com.operasoftware.OperaNext"] {
             #expect(LiveAXTree.isChromiumBased(bundleID: id, bundleURL: nil), "\(id)")
         }
         #expect(!LiveAXTree.isChromiumBased(bundleID: "com.apple.finder", bundleURL: nil))

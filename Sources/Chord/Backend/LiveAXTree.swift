@@ -30,6 +30,8 @@ struct LiveAXTree: AXTree {
         "com.brave.Browser",
         "company.thebrowser.Browser",
         "org.chromium.Chromium",
+        "com.vivaldi.Vivaldi",
+        "com.operasoftware.Opera",
     ]
 
     private static let chromiumFrameworks = [
