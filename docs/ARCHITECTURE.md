@@ -19,7 +19,7 @@ behavior is not yet validated. Chord reads window geometry itself. See the
 | Picker | yes | Rects + direction vector → target window. `Look` adds monitors: same-monitor pool first, then the adjacent monitor at an edge (tie rules in `Look.swift`) |
 | Unfold | yes | Pure `frame()` geometry and press/timer state machine |
 | Spread | no | View mode with remembered frames |
-| WorkspaceBackend | no | Replaceable substrate protocol; a deterministic fake and `AXWindowBackend` (Accessibility only: focused window, no places; AX writes are `Executor/AXWindowWriter`). Per-frame motion never goes through AeroSpace (spike 6) |
+| WorkspaceBackend | no | Replaceable substrate protocol; a deterministic fake and `AXWindowBackend` (Accessibility only: focused window, or every visible window for Look; no places; AX writes are `Executor/AXWindowWriter`). Per-frame motion never goes through AeroSpace (spike 6) |
 | Executor | no | The only component allowed to change windows (`Sources/Chord/Executor`) |
 | ChordShell | no | Menu-bar status, pause, permission, launch-at-login, update, and diagnostics controls; no window operations. Update implementation is in `Sources/Chord/Update` |
 | Agents | no | Files emitting typed plans |
