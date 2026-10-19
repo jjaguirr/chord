@@ -198,12 +198,54 @@ struct WindowMotionTests {
         #expect(try await rig.bounds() == start)
     }
 
-    @Test func lookSpreadAndAbortAreLoggedAndChangeNothing() async throws {
-        let rig = makeRig()
-        await rig.motion.handle(.intents([.look(PickDirection(x: 1, y: 0)), .spread, .abortCharge]))
+    @Test func aLookIntentMovesFocusToTheNearestWindowThatWay() async throws {
+        let backend = FakeWorkspaceBackend(
+            monitors: [MonitorSnapshot(id: MonitorID(1), bounds: visible, isPrimary: true)],
+            windows: [
+                WindowSnapshot(id: WindowID(1), appName: "A", place: .bench, isFloating: true,
+                    bounds: ScreenRect(x: 100, y: 352, width: 96, height: 96)),
+                WindowSnapshot(id: WindowID(2), appName: "B", place: .bench, isFloating: true,
+                    bounds: ScreenRect(x: 500, y: 352, width: 96, height: 96)),
+            ],
+            focusedWindow: WindowID(1))
+        let log = MotionLog()
+        let motion = WindowMotion(
+            executor: Executor(backend: backend, logSink: { log.append($0) }), clock: MotionClock(),
+            sleep: { _ in }, log: { log.append($0) })
 
-        #expect(rig.log.has("look: moving focus is not wired"))
+        await motion.handle(.intents([.look(PickDirection(x: 1, y: 0))]))
+
+        #expect(try await backend.snapshot().focusedWindow == WindowID(2))
+        #expect(log.has("look l: from window 1: picked window 2"))
+
+        await motion.handle(.intents([.look(PickDirection(x: 1, y: 0))]))
+        #expect(try await backend.snapshot().focusedWindow == WindowID(2))
+        #expect(log.has("look l: from window 2: nothing picked"))
+    }
+
+    @Test func lookWithoutAccessibilityLogsAndMovesNothing() async throws {
+        let rig = makeRig()
+        await rig.backend.queue([.disconnected])
+        await rig.motion.handle(.intents([.look(PickDirection(x: 1, y: 0))]))
+
+        #expect(rig.log.has("look l: Accessibility access is missing"))
+    }
+
+    @Test func lookClosesAnOpenUnfoldRunFirst() async throws {
+        let rig = makeRig()
+        await rig.press(at: 0)
+        await rig.tick(at: 0.5)
+        await rig.motion.handle(.intents([.look(PickDirection(x: 1, y: 0))]))
+
+        #expect(rig.log.has("unfold: finished (look)"))
+    }
+
+    @Test func spreadAndAbortAreLoggedAndChangeNothing() async throws {
+        let rig = makeRig()
+        await rig.motion.handle(.intents([.spread, .abortCharge]))
+
         #expect(rig.log.has("spread: not wired"))
+        #expect(rig.log.has("abort: Option+0 charge aborted"))
         #expect(try await rig.bounds() == start)
     }
 }

@@ -12,6 +12,8 @@ import Foundation
 /// - Reshape: one log-space aspect/area step per Option+R+hjkl press.
 /// - Carry: one move per carry intent, with the edge-magnet distance the state machine
 ///   already computed.
+/// - Look: focus moves at once to the Picker's nearest visible window in that direction,
+///   across monitors (`Look`); no preview, no latch.
 ///
 /// Commands run strictly one at a time, in the order they arrive, so a press never
 /// interleaves with a frame step. Main thread only.
@@ -125,8 +127,14 @@ final class WindowMotion {
             } catch {
                 log("carry: \(Self.describe(error))")
             }
-        case .look:
-            log("look: moving focus is not wired to windows yet; nothing changed")
+        case .look(let direction):
+            await finishRun(reason: "look")
+            do {
+                // The Executor logs the key, the candidates, and the pick or why none.
+                try await executor.look(direction)
+            } catch {
+                log("look \(direction.keys): \(Self.describe(error))")
+            }
         case .spread:
             log("spread: not wired to windows yet; nothing changed")
         case .abortCharge:

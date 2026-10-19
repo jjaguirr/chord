@@ -107,6 +107,13 @@ public enum BackendError: Error, Equatable, Sendable {
 public protocol WorkspaceBackend: Sendable {
     func snapshot() async throws -> BackendSnapshot
 
+    /// Like `snapshot()`, but lists every window currently visible on any monitor, not
+    /// only the ones the backend already tracks. Minimized, hidden, and other-Space
+    /// windows are left out where the substrate can tell. Costs more than `snapshot()`,
+    /// so only Look asks for it. A backend that already lists every window answers
+    /// with its ordinary snapshot.
+    func visibleSnapshot() async throws -> BackendSnapshot
+
     /// Moves a window to another place and returns the place it left.
     @discardableResult
     func moveWindow(_ id: WindowID, to place: Place) async throws -> Place
@@ -127,4 +134,10 @@ public protocol WorkspaceBackend: Sendable {
 
     /// Re-establishes the connection after `.notConnected`. Idempotent when connected.
     func reconnect() async throws
+}
+
+extension WorkspaceBackend {
+    public func visibleSnapshot() async throws -> BackendSnapshot {
+        try await snapshot()
+    }
 }
