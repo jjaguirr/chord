@@ -1,7 +1,8 @@
+import Foundation
 import ApplicationServices
 
 /// The Accessibility reads and the one write the focused-window lookup needs, behind a
-/// protocol so the fallback order is testable with a fake.
+/// protocol so the lookup order is testable with a fake.
 protocol AXTree {
     associatedtype Element
 
@@ -9,10 +10,9 @@ protocol AXTree {
     func focusedApplication() -> Result<Element, AXFailure>
     /// An element-valued attribute, such as `kAXFocusedWindowAttribute`.
     func element(of parent: Element, attribute: String) -> Result<Element, AXFailure>
-    /// The application's `kAXWindowsAttribute`.
-    func windows(of app: Element) -> Result<[Element], AXFailure>
-    /// The window's `kAXSubroleAttribute`, nil when unreadable.
-    func subrole(of window: Element) -> String?
+    /// Whether the application is Chromium-based or Electron, the only kinds that need
+    /// `AXManualAccessibility` before they answer.
+    func isChromiumBased(_ app: Element) -> Bool
     /// Sets a boolean attribute on the application element.
     func setBool(_ attribute: String, on app: Element) -> AXError
 }
@@ -25,20 +25,29 @@ enum FocusedWindowLookupResult<Element> {
 
 /// Finds the focused window of the focused application.
 ///
-/// Chromium (Chrome, Edge, Brave, Electron) builds its accessibility tree lazily and
+/// Chromium (Chrome, Edge, Brave, Arc, Electron) builds its accessibility tree lazily and
 /// answers a plain AX client's `kAXFocusedWindow` with an error until told an assistive
-/// client is present. Order: focused window; then, once per app, set
+/// client is present. Order: focused window; then, for Chromium-based apps only, set
 /// `AXManualAccessibility` (the documented Chromium/Electron switch, no animation cost,
-/// unlike `AXEnhancedUserInterface`) and retry; then main window; then the first
-/// standard window in the windows list.
+/// unlike `AXEnhancedUserInterface`) and re-read the focused window a bounded number of
+/// times while the tree is built. The app is latched only once the set succeeds.
 final class FocusedWindowLookup<Tree: AXTree> {
+    static var retryAttempts: Int { 3 }
+    static var retryInterval: Double { 0.05 }
+
     private let tree: Tree
     private let appKey: (Tree.Element) -> Int
+    private let sleep: (Double) -> Void
     private var enabledApps: Set<Int> = []
 
-    init(tree: Tree, appKey: @escaping (Tree.Element) -> Int) {
+    init(
+        tree: Tree,
+        appKey: @escaping (Tree.Element) -> Int,
+        sleep: @escaping (Double) -> Void = { Thread.sleep(forTimeInterval: $0) }
+    ) {
         self.tree = tree
         self.appKey = appKey
+        self.sleep = sleep
     }
 
     func find() -> FocusedWindowLookupResult<Tree.Element> {
@@ -62,26 +71,18 @@ final class FocusedWindowLookup<Tree: AXTree> {
             return .found(window, via: "focused window")
         }
 
-        if enabledApps.insert(appKey(app)).inserted {
+        if tree.isChromiumBased(app), !enabledApps.contains(appKey(app)) {
             let status = tree.setBool("AXManualAccessibility", on: app)
             failures.append("AXManualAccessibility set \(Self.name(status))")
-            if status == .success, let window = attempt(kAXFocusedWindowAttribute, label: "focused retry") {
-                return .found(window, via: "focused window after AXManualAccessibility")
+            if status == .success {
+                enabledApps.insert(appKey(app))
+                for retry in 1...Self.retryAttempts {
+                    sleep(Self.retryInterval)
+                    if let window = attempt(kAXFocusedWindowAttribute, label: "focused retry \(retry)") {
+                        return .found(window, via: "focused window after AXManualAccessibility")
+                    }
+                }
             }
-        }
-
-        if let window = attempt(kAXMainWindowAttribute, label: "main") {
-            return .found(window, via: "main window")
-        }
-
-        switch tree.windows(of: app) {
-        case .success(let windows):
-            if let window = windows.first(where: { tree.subrole(of: $0) == kAXStandardWindowSubrole as String }) {
-                return .found(window, via: "first standard window")
-            }
-            failures.append("windows: none standard of \(windows.count)")
-        case .failure(let error):
-            failures.append("windows \(Self.name(error.code))")
         }
         return .notFound(reason: failures.joined(separator: "; "))
     }

@@ -1,3 +1,4 @@
+import AppKit
 import ApplicationServices
 
 /// The real Accessibility tree behind `AXTree`.
@@ -16,18 +17,33 @@ struct LiveAXTree: AXTree {
         return .success(unsafeDowncast(value, to: AXUIElement.self))
     }
 
-    func windows(of app: AXUIElement) -> Result<[AXUIElement], AXFailure> {
-        var value: CFTypeRef?
-        let status = AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value)
-        guard status == .success else { return .failure(AXFailure(code: status)) }
-        return .success((value as? [AXUIElement]) ?? [])
+    func isChromiumBased(_ app: AXUIElement) -> Bool {
+        var pid: pid_t = 0
+        AXUIElementGetPid(app, &pid)
+        guard let running = NSRunningApplication(processIdentifier: pid) else { return false }
+        return Self.isChromiumBased(bundleID: running.bundleIdentifier, bundleURL: running.bundleURL)
     }
 
-    func subrole(of window: AXUIElement) -> String? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(window, kAXSubroleAttribute as CFString, &value) == .success
-        else { return nil }
-        return value as? String
+    private static let chromiumBundlePrefixes = [
+        "com.google.Chrome",
+        "com.microsoft.edgemac",
+        "com.brave.Browser",
+        "company.thebrowser.Browser",
+        "org.chromium.Chromium",
+    ]
+
+    private static let chromiumFrameworks = [
+        "Electron Framework.framework",
+        "Chromium Embedded Framework.framework",
+    ]
+
+    static func isChromiumBased(bundleID: String?, bundleURL: URL?) -> Bool {
+        if let bundleID, chromiumBundlePrefixes.contains(where: { bundleID.hasPrefix($0) }) { return true }
+        guard let bundleURL else { return false }
+        let frameworks = bundleURL.appendingPathComponent("Contents/Frameworks", isDirectory: true)
+        return chromiumFrameworks.contains {
+            FileManager.default.fileExists(atPath: frameworks.appendingPathComponent($0).path)
+        }
     }
 
     func setBool(_ attribute: String, on app: AXUIElement) -> AXError {
