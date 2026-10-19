@@ -44,7 +44,7 @@ Post-v1 (cut): voice, peek, fold-model tiling, workspace templates and template 
   fits, then square, 4:3, 3:2, golden, and 16:9; the card stop is skipped when
   it does not fit the visible frame. The pure `UnfoldAnimator` owns this
   press/timer state; window application remains outside the core.
-- The step timer is 600 ms by default and configurable; it is distinct from
+- The step timer is 1000 ms by default and configurable; it is distinct from
   `frame()` geometry. Non-16:9 screens letterbox in the largest 16:9 box.
   Portrait screens are unsupported. High DPI is not pursued.
 

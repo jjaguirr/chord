@@ -114,7 +114,7 @@ struct WindowMotionTests {
         await rig.tick(at: 0.5)
         await rig.press(at: 0.5)
         await rig.tick(at: 0.75)
-        await rig.tick(at: 2)  // past the 600 ms window: the run closes
+        await rig.tick(at: 2)  // past the 1000 ms window: the run closes
 
         #expect(rig.log.has("unfold: finished"))
         try await rig.executor.undo()
@@ -125,6 +125,28 @@ struct WindowMotionTests {
         let frame = try await rig.bounds()
         #expect(frame.width == 333)
         #expect(frame.height == 471)
+    }
+
+    @Test func theDefaultStepWindowIsOneSecond() async throws {
+        let rig = makeRig()
+        await rig.press(at: 0)
+        await rig.tick(at: 0.5)
+        let a5 = try await rig.bounds()
+        #expect(a5.width == 333)
+
+        // 0.9 s after the last press: still inside the window, so it steps up to square.
+        await rig.press(at: 0.9)
+        await rig.tick(at: 1.4)
+        let square = try await rig.bounds()
+        #expect(abs(square.width - square.height) <= 1)
+
+        // 1.1 s after that press: the run has expired, so the next press restarts at A5.
+        await rig.tick(at: 2.0)
+        await rig.press(at: 2.0)
+        await rig.tick(at: 2.5)
+        let restarted = try await rig.bounds()
+        #expect(restarted.width == 333)
+        #expect(restarted.height == 471)
     }
 
     @Test func unfoldWithoutAccessibilityLogsAndMovesNothing() async throws {

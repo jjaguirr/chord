@@ -58,10 +58,10 @@ public func unfoldStopTimes(screenW: Double, screenH: Double, margin: Double = 0
 /// targets the smallest fitting stop (normally the baby A5 size), then each
 /// further press advances through the fitting landmark ratios until expiry.
 public struct UnfoldConfig: Equatable, Sendable {
-    /// ASSUMPTION (captain will tune): time after a press in which another press
-    /// steps up instead of resetting. Config key `unfold_step_window_ms` is
-    /// wired later.
-    public static let defaultStepWindow = 0.6
+    /// Time after a press in which another press steps up instead of resetting.
+    /// Set to 1 s after live use; config key `unfold_step_window_ms` overrides it
+    /// (see `Timing.defaults`).
+    public static let defaultStepWindow = 1.0
 
     /// First-press ease to the smallest fitting stop, normally A5, seconds.
     public var shrinkDuration: Double

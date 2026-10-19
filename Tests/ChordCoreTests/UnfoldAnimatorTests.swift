@@ -185,10 +185,10 @@ private func expectRect(_ a: UnfoldRect, _ b: UnfoldRect, tol: Double = 1e-9) {
         clock.time += 0.15
         expectRect(a.tick()!, target(count - 1))
         // Last press restarted the timer: still waiting well after the first window.
-        clock.time += 0.4
+        clock.time += UnfoldConfig.defaultStepWindow / 2
         _ = a.tick()
         #expect(a.phase == .waiting)
-        clock.time += 0.3
+        clock.time += UnfoldConfig.defaultStepWindow / 2
         _ = a.tick()
         #expect(a.phase == .idle)
     }

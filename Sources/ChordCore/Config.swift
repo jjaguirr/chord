@@ -58,7 +58,7 @@ public struct Timing: Equatable, Sendable {
   public let unfoldStepWindowMs: Int
 
   public static let defaults = Timing(
-    holdMs: 700, tapMs: 250, chordWindowMs: 35, a5HoldMs: 200, unfoldStepWindowMs: 600)
+    holdMs: 700, tapMs: 250, chordWindowMs: 35, a5HoldMs: 200, unfoldStepWindowMs: 1000)
 }
 
 /// Carry step sizes in pixels for held-direction repeats.
