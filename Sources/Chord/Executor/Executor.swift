@@ -319,6 +319,53 @@ public actor Executor {
         return applied
     }
 
+    /// Carries the focused window to the adjacent monitor in `direction`: same size, flush
+    /// with the edge it enters through, its position along the other axis kept and clamped
+    /// into that monitor's visible frame (`MonitorAdjacency`, the rule Look also uses).
+    /// Adjacency comes from the backend's monitors. One undo entry restores the previous
+    /// frame, and with it the previous monitor. With no monitor that way the window takes
+    /// the ordinary carry step `(dx, dy)` instead and the reason is logged.
+    @discardableResult
+    public func carryAcross(_ direction: PickDirection, dx: Double, dy: Double) async throws -> [Change] {
+        let snapshot = try await backend.snapshot()
+        let (window, context) = try Self.focusedContext(in: snapshot)
+        let monitors = snapshot.monitors.map {
+            PickerMonitor(id: $0.id.rawValue, bounds: $0.bounds.pickerRect, isPrimary: $0.isPrimary)
+        }
+        guard !monitors.isEmpty else { throw ExecutorError.noVisibleFrame }
+        let bounds = context.bounds
+        let origin = monitors[MonitorAdjacency.index(holding: bounds.pickerRect, in: monitors)]
+        guard let target = MonitorAdjacency.neighbour(of: origin, in: monitors, direction: direction) else {
+            appendLog("carry \(direction.keys): window \(context.id): no monitor that way; carried within the monitor")
+            return try await carry(dx: dx, dy: dy)
+        }
+        let landed = MonitorAdjacency.landing(
+            of: bounds.pickerRect, from: origin.bounds, on: target.bounds, direction: direction)
+        let crossesX = MonitorAdjacency.isBeyond(target.bounds, origin.bounds, PickDirection(x: direction.x, y: 0))
+        let crossesY = MonitorAdjacency.isBeyond(target.bounds, origin.bounds, PickDirection(x: 0, y: direction.y))
+        let visible = target.bounds
+        let frame = ScreenRect(
+            x: crossesX
+                ? landed.x
+                : Self.carried(landed.x, by: dx, size: landed.width, low: visible.x, high: visible.x + visible.width),
+            y: crossesY
+                ? landed.y
+                : Self.carried(landed.y, by: dy, size: landed.height, low: visible.y, high: visible.y + visible.height),
+            width: landed.width, height: landed.height
+        ).roundedToIntegers()
+        guard frame != bounds else { return [] }
+
+        let plan = try Plan(assignments: [])
+        let action = Action.frame(windowID: context.id, from: bounds.actionRect, to: frame.actionRect)
+        let planned = changes(from: try plan.actions(from: [context.id: window.place], requested: [action]))
+        guard !planned.isEmpty else { return [] }
+        let label = "carry \(direction.keys) across monitors \(origin.id) -> \(target.id)"
+        let applied = try await run(planned, label: label)
+        if !applied.isEmpty { undoStack.append(applied) }
+        carryRun = nil
+        return applied
+    }
+
     /// `origin` moved by `delta`, held inside `low...high` only in the direction of travel.
     private static func carried(_ origin: Double, by delta: Double, size: Double, low: Double, high: Double) -> Double {
         let moved = origin + delta

@@ -111,8 +111,8 @@ public enum Look {
                     screenBounds: bounds), .sameMonitor, others, otherwise: .noMonitorInDirection)
         }
 
-        let originMonitor = monitors[monitorIndex(holding: origin.rect, in: monitors)]
-        let held = windows.map { (window: $0, monitor: monitorIndex(holding: $0.rect, in: monitors)) }
+        let originMonitor = monitors[MonitorAdjacency.index(holding: origin.rect, in: monitors)]
+        let held = windows.map { (window: $0, monitor: MonitorAdjacency.index(holding: $0.rect, in: monitors)) }
         let here = held.filter { monitors[$0.monitor] == originMonitor }.map(\.window)
         let hereOthers = here.filter { $0.id != originID }.map(\.id)
         if let target = Picker.pick(
@@ -123,7 +123,7 @@ public enum Look {
         }
 
         let neighbours = monitors.filter {
-            $0 != originMonitor && isBeyond($0.bounds, originMonitor.bounds, direction)
+            $0 != originMonitor && MonitorAdjacency.isBeyond($0.bounds, originMonitor.bounds, direction)
         }
         guard !neighbours.isEmpty else {
             return LookDecision(outcome: .nothing(.noMonitorInDirection), candidates: hereOthers)
@@ -151,36 +151,6 @@ public enum Look {
     ) -> LookDecision {
         LookDecision(
             outcome: target.map { .picked($0, scope) } ?? .nothing(otherwise), candidates: candidates)
-    }
-
-    /// The monitor holding the rect's center (half-open, as `ScreenGeometry` reads it), else
-    /// the primary monitor, else the first. `monitors` must not be empty.
-    private static func monitorIndex(holding rect: PickerRect, in monitors: [PickerMonitor]) -> Int {
-        let cx = rect.x + rect.width / 2
-        let cy = rect.y + rect.height / 2
-        if let held = monitors.firstIndex(where: {
-            $0.bounds.x <= cx && cx < $0.bounds.x + $0.bounds.width
-                && $0.bounds.y <= cy && cy < $0.bounds.y + $0.bounds.height
-        }) {
-            return held
-        }
-        return monitors.firstIndex(where: \.isPrimary) ?? 0
-    }
-
-    /// `other` lies past `origin`'s edge in a direction the press asks for, and shares
-    /// some extent with it on the other axis. One point of slack absorbs rounding.
-    private static func isBeyond(_ other: PickerRect, _ origin: PickerRect, _ direction: PickDirection) -> Bool {
-        let slack = 1.0
-        func shares(_ aLow: Double, _ aSize: Double, _ bLow: Double, _ bSize: Double) -> Bool {
-            min(aLow + aSize, bLow + bSize) - max(aLow, bLow) > 0
-        }
-        let sharesRows = shares(origin.y, origin.height, other.y, other.height)
-        let sharesColumns = shares(origin.x, origin.width, other.x, other.width)
-        if direction.x > 0, other.x >= origin.x + origin.width - slack, sharesRows { return true }
-        if direction.x < 0, other.x + other.width <= origin.x + slack, sharesRows { return true }
-        if direction.y > 0, other.y >= origin.y + origin.height - slack, sharesColumns { return true }
-        if direction.y < 0, other.y + other.height <= origin.y + slack, sharesColumns { return true }
-        return false
     }
 
     private static func union(_ rects: [PickerRect]) -> PickerRect {
