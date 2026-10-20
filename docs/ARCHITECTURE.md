@@ -15,8 +15,8 @@ behavior is not yet validated. Chord reads window geometry itself. See the
 |---|---|---|
 | InputLayer | no | Registered Carbon hotkeys; CGEventTap fallback for keys Carbon cannot register, and a passive Carbon cross-check that only logs (`Sources/Chord/Input`). Behind a `HotkeySource` protocol; feeds KeyStateMachine, logs intents, and hands them to WindowMotion |
 | WindowMotion | no | Turns captured intents into Executor calls: Unfold stepper timing (elapsed-time frame skipping), Reshape, Carry, Look (`Sources/Chord/Motion`). Makes no window call itself |
-| KeyStateMachine | yes | Timestamped tap/hold, directional chords, carry ramp, reshape intents |
-| Picker | yes | Rects + direction vector → target window. `Look` adds monitors: same-monitor pool first, then the adjacent monitor at an edge (tie rules in `Look.swift`) |
+| KeyStateMachine | yes | Timestamped tap/hold, directional chords, carry ramp, reshape intents; a fresh carry press at a visible-frame edge emits `carryAcross` |
+| Picker | yes | Rects + direction vector → target window. `Look` adds monitors: same-monitor pool first, then the adjacent monitor at an edge (tie rules in `Look.swift`). `MonitorAdjacency` holds the shared monitor adjacency and landing rule that Look and cross-monitor carry use |
 | Unfold | yes | Pure `frame()` geometry and press/timer state machine |
 | Spread | no | View mode with remembered frames |
 | WorkspaceBackend | no | Replaceable substrate protocol; a deterministic fake and `AXWindowBackend` (Accessibility only: focused window, or every visible window for Look; no places; AX writes are `Executor/AXWindowWriter`). Per-frame motion never goes through AeroSpace (spike 6) |
