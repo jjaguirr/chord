@@ -341,8 +341,18 @@ public actor Executor {
         }
         let landed = MonitorAdjacency.landing(
             of: bounds.pickerRect, from: origin.bounds, on: target.bounds, direction: direction)
-        let frame = ScreenRect(x: landed.x, y: landed.y, width: landed.width, height: landed.height)
-            .roundedToIntegers()
+        let crossesX = MonitorAdjacency.isBeyond(target.bounds, origin.bounds, PickDirection(x: direction.x, y: 0))
+        let crossesY = MonitorAdjacency.isBeyond(target.bounds, origin.bounds, PickDirection(x: 0, y: direction.y))
+        let visible = target.bounds
+        let frame = ScreenRect(
+            x: crossesX
+                ? landed.x
+                : Self.carried(landed.x, by: dx, size: landed.width, low: visible.x, high: visible.x + visible.width),
+            y: crossesY
+                ? landed.y
+                : Self.carried(landed.y, by: dy, size: landed.height, low: visible.y, high: visible.y + visible.height),
+            width: landed.width, height: landed.height
+        ).roundedToIntegers()
         guard frame != bounds else { return [] }
 
         let plan = try Plan(assignments: [])

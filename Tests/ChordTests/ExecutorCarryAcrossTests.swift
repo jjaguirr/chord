@@ -94,6 +94,26 @@ struct ExecutorCarryAcrossTests {
         #expect(try await bounds(backend) == ScreenRect(x: 1440, y: 429, width: 333, height: 471))
     }
 
+    @Test func crossingAlsoTakesTheOrdinaryStepAlongTheAxisItDoesNotCross() async throws {
+        let backend = make([main, wide], frame: ScreenRect(x: 1107, y: 300, width: 333, height: 471))
+        let executor = Executor(backend: backend)
+
+        try await executor.carryAcross(.l, dx: 0, dy: 10)
+
+        #expect(try await bounds(backend) == ScreenRect(x: 1440, y: 310, width: 333, height: 471))
+        try await executor.undo()
+        #expect(try await bounds(backend) == ScreenRect(x: 1107, y: 300, width: 333, height: 471))
+    }
+
+    @Test func cornerCrossingTakesTheOrdinaryStepOnTheAxisTheNeighbourIsNotBeyond() async throws {
+        let backend = make([main, wide], frame: ScreenRect(x: 1107, y: 429, width: 333, height: 471))
+        let executor = Executor(backend: backend)
+
+        try await executor.carryAcross(PickDirection(x: 1, y: 1), dx: 0, dy: 10)
+
+        #expect(try await bounds(backend) == ScreenRect(x: 1440, y: 439, width: 333, height: 471))
+    }
+
     @Test func needsAFocusedWindow() async throws {
         let backend = FakeWorkspaceBackend(monitors: [main, wide], windows: [], focusedWindow: nil)
         let executor = Executor(backend: backend)
