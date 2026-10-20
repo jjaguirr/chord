@@ -118,6 +118,23 @@ public protocol WorkspaceBackend: Sendable {
     @discardableResult
     func moveWindow(_ id: WindowID, to place: Place) async throws -> Place
 
+    /// Shows `cell` and returns the cell that was showing, or nil when what was showing
+    /// is not a grid cell (a workspace Chord did not create). Showing the returned cell
+    /// is the inverse. Changes only what is visible; no window moves or resizes.
+    @discardableResult
+    func show(_ cell: GridCell) async throws -> GridCell?
+
+    /// Moves a window into `cell` and returns the slot it left, so the Executor can
+    /// record an inverse: a cell restores with this method, the bench with the
+    /// `Place`-typed `moveWindow`. A window in the vault column is not reported by any
+    /// read, so it is an unknown window here too; it cannot be moved back by Chord.
+    @discardableResult
+    func moveWindow(_ id: WindowID, to cell: GridCell) async throws -> GridSlot
+
+    /// The windows currently in `cell`, in the substrate's order. Always empty for the
+    /// vault column: its windows are never reported.
+    func listWindows(in cell: GridCell) async throws -> [WindowID]
+
     /// Sets a window's frame exactly as given and returns the frame it replaced.
     /// The Executor rounds before calling; the backend does not reinterpret.
     @discardableResult

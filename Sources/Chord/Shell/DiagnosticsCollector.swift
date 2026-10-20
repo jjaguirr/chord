@@ -25,7 +25,8 @@ enum DiagnosticsCollector {
     static func render(
         config: Config,
         logFileURL: URL = ActionLog.live.fileURL,
-        crashReportsDirectory: URL = crashReportsDirectory
+        crashReportsDirectory: URL = crashReportsDirectory,
+        aerospaceHealth: (String) -> AeroSpaceHealth = { AeroSpaceDoctor.check(pinnedTag: $0) }
     ) -> String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
             ?? "unknown (not packaged)"
@@ -34,7 +35,7 @@ enum DiagnosticsCollector {
             chordVersion: version,
             macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
             aerospaceVersion: "\(config.backend.aerospaceTag) (pinned)",
-            aerospaceHealth: "not connected; no substrate is wired in this build",
+            aerospaceHealth: aerospaceHealth(config.backend.aerospaceTag).report,
             accessibilityGranted: AccessibilityPermission.isGranted,
             config: config,
             crashReports: recentCrashReports(in: crashReportsDirectory).map(\.lastPathComponent),

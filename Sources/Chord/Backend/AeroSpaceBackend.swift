@@ -1,0 +1,218 @@
+import ChordCore
+import Foundation
+
+/// A `WorkspaceBackend` over a pinned AeroSpace server: the interim engine until
+/// Chord has its own workspace model. Everything AeroSpace-specific lives in this
+/// file, `AeroSpaceWire`, and `AeroSpaceSocket`; a second adapter replaces it by
+/// passing the same contract tests.
+///
+/// Each grid cell is one AeroSpace workspace named `r<row>-<column>` (`GridCell.name`),
+/// and the bench is the workspace `bench`. AeroSpace is flat, so rows exist only in
+/// that naming. Workspaces AeroSpace made on its own (`1`, `2`, ...) are not cells:
+/// their windows are reported on the bench, the undecided pile.
+///
+/// Every call returns a confirmed result or throws, and a failure is never silent
+/// success: a server that is unreachable, disabled, or not the pinned version throws
+/// `.notConnected` (nothing was applied); any other failure after a command may have
+/// reached the server throws `.unknown`. Before any change this backend reads from the
+/// server, so a wrong version is refused before anything is applied.
+///
+/// AeroSpace does not report or set frames, and per-frame work never goes through it
+/// (spike 6b: reads cost tens of milliseconds). Snapshots take frames from the window
+/// server, and `applyFrame`, `focusWindow`, and `raiseWindow` belong to the Accessibility
+/// backend.
+public actor AeroSpaceBackend: WorkspaceBackend {
+    typealias FrameSource = @Sendable ([WindowID]) -> [WindowID: ScreenRect]
+
+    private let transport: any AeroSpaceTransport
+    private let pinnedTag: String
+    private let monitors: @Sendable () -> [MonitorSnapshot]
+    private let frames: FrameSource
+    // DECISION: a `Place`-typed move lands in the row last shown. The row is learned from
+    // AeroSpace once, then kept as `show` changes it, so a plan of many moves does not
+    // read the focused workspace for each. The alternative, reading it every time, costs
+    // a round trip per window. Chord owns workspace switching, so the cache stays true.
+    private var shownRow: Int?
+
+    init(
+        transport: any AeroSpaceTransport,
+        pinnedTag: String,
+        monitors: @escaping @Sendable () -> [MonitorSnapshot] = { ScreenGeometry.monitors() },
+        frames: @escaping FrameSource = { WindowFrameReader.frames(of: $0) }
+    ) {
+        self.transport = transport
+        self.pinnedTag = pinnedTag
+        self.monitors = monitors
+        self.frames = frames
+    }
+
+    // MARK: Reads
+
+    public func snapshot() async throws -> BackendSnapshot {
+        let rows = try await readWindows()
+        let focused = try await readFocusedWindow()
+        let reported = rows.compactMap { row -> (Row, Place)? in
+            row.slot.place.map { (row, $0) }
+        }
+        let bounds = frames(reported.map(\.0.id))
+        let windows = reported.compactMap { row, place -> WindowSnapshot? in
+            guard let frame = bounds[row.id] else { return nil }
+            return WindowSnapshot(
+                id: row.id, appName: row.appName, place: place, isFloating: row.isFloating, bounds: frame)
+        }
+        let ids = Set(windows.map(\.id))
+        return BackendSnapshot(
+            monitors: monitors(), windows: windows,
+            focusedWindow: focused.flatMap { ids.contains($0) ? $0 : nil })
+    }
+
+    public func listWindows(in cell: GridCell) async throws -> [WindowID] {
+        // The vault column is never reported, so there is nothing to read.
+        guard cell.place != nil else { return [] }
+        return try await readWindows().filter { $0.slot == .cell(cell) }.map(\.id)
+    }
+
+    // MARK: Changes
+
+    @discardableResult
+    public func show(_ cell: GridCell) async throws -> GridCell? {
+        let name = try await readFocusedWorkspace()
+        let previous = GridCell(name: name)
+        // Already showing: send nothing, so AeroSpace's back-and-forth setting cannot
+        // turn a repeat key into a switch away.
+        if name != cell.name {
+            try requireSuccess(try await send(.showWorkspace(cell.name), isRead: false))
+        }
+        shownRow = cell.row
+        return previous
+    }
+
+    @discardableResult
+    public func moveWindow(_ id: WindowID, to cell: GridCell) async throws -> GridSlot {
+        try await relocate(id, to: .cell(cell))
+    }
+
+    @discardableResult
+    public func moveWindow(_ id: WindowID, to place: Place) async throws -> Place {
+        let row = try await rowForPlaces()
+        guard let slot = GridSlot(row: row, place: place) else {
+            throw BackendError.unknown(reason: "no workspace for that place in row \(row)")
+        }
+        let previous = try await relocate(id, to: slot)
+        // A reported window is always on the bench or in a column `Place` names.
+        return previous.place ?? .bench
+    }
+
+    @discardableResult
+    public func applyFrame(_ id: WindowID, to frame: ScreenRect) async throws -> ScreenRect {
+        throw BackendError.unknown(reason: "AeroSpace does not set frames; frames go through the Accessibility backend")
+    }
+
+    @discardableResult
+    public func focusWindow(_ id: WindowID) async throws -> WindowID? {
+        throw BackendError.unknown(reason: "AeroSpace does not focus single windows here; focus goes through the Accessibility backend")
+    }
+
+    public func raiseWindow(_ id: WindowID) async throws {
+        throw BackendError.unknown(reason: "AeroSpace does not raise windows; raising goes through the Accessibility backend")
+    }
+
+    public func reconnect() async throws {
+        await transport.reset()
+        // A read proves the server answers, is enabled, and is the pinned version.
+        _ = try await readFocusedWorkspace()
+    }
+
+    // MARK: Moving
+
+    /// Moves `id` to `slot` and returns the slot it left. Reads first, which proves the
+    /// window exists and the server is the pinned version; a window already in `slot`
+    /// is left alone and nothing is sent.
+    private func relocate(_ id: WindowID, to slot: GridSlot) async throws -> GridSlot {
+        guard let row = try await readWindows().first(where: { $0.id == id }) else {
+            throw BackendError.unknownWindow(id)
+        }
+        // A window in the vault column is unknown to every caller.
+        guard row.slot.place != nil else { throw BackendError.unknownWindow(id) }
+        if row.slot == slot { return row.slot }
+        try requireSuccess(try await send(.moveWindow(id, toWorkspace: slot.name), isRead: false))
+        return row.slot
+    }
+
+    private func rowForPlaces() async throws -> Int {
+        if let shownRow { return shownRow }
+        guard let cell = GridCell(name: try await readFocusedWorkspace()) else { return GridCell.first.row }
+        shownRow = cell.row
+        return cell.row
+    }
+
+    // MARK: Protocol
+
+    private struct Row {
+        let id: WindowID
+        let slot: GridSlot
+        let isFloating: Bool
+        let appName: String
+    }
+
+    private func readWindows() async throws -> [Row] {
+        let answer = try await send(.listAllWindows, isRead: true)
+        try requireSuccess(answer)
+        return try answer.stdout.split(separator: "\n", omittingEmptySubsequences: true).map { line in
+            let fields = line.split(separator: "\t", maxSplits: 3, omittingEmptySubsequences: false)
+            guard fields.count == 4, let id = Int(fields[0]) else {
+                throw BackendError.unknown(reason: "list-windows answered a line this build cannot read")
+            }
+            // A workspace Chord did not name is undecided, so it joins the bench.
+            return Row(
+                id: WindowID(id), slot: GridSlot(name: String(fields[1])) ?? .bench,
+                isFloating: fields[2] == "floating", appName: String(fields[3]))
+        }
+    }
+
+    /// The focused window, or nil when none has focus. AeroSpace reports "no focused
+    /// window" as an error, so any failed answer reads as none.
+    private func readFocusedWindow() async throws -> WindowID? {
+        let answer = try await send(.focusedWindowID, isRead: true)
+        guard answer.exitCode == 0 else { return nil }
+        return Int(answer.stdout.trimmingCharacters(in: .whitespacesAndNewlines)).map(WindowID.init)
+    }
+
+    private func readFocusedWorkspace() async throws -> String {
+        let answer = try await send(.focusedWorkspace, isRead: true)
+        try requireSuccess(answer)
+        let name = answer.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { throw BackendError.unknown(reason: "AeroSpace reported no focused workspace") }
+        return name
+    }
+
+    /// Sends `command` and maps transport failure and a disabled or wrong-version server
+    /// onto the backend taxonomy. The version is enforced on reads only: after a change
+    /// was sent, refusing its answer as "not connected" would claim nothing applied.
+    private func send(_ command: AeroSpaceCommand, isRead: Bool) async throws -> AeroSpaceAnswer {
+        let answer: AeroSpaceAnswer
+        do {
+            answer = try await transport.send(command)
+        } catch AeroSpaceTransportError.cannotConnect, AeroSpaceTransportError.protocolMismatch {
+            throw BackendError.notConnected
+        } catch AeroSpaceTransportError.noReply(let reason) {
+            throw BackendError.unknown(reason: "no confirmed answer from AeroSpace: \(reason)")
+        } catch {
+            throw BackendError.unknown(reason: "AeroSpace call failed: \(error.localizedDescription)")
+        }
+        if answer.isServerDisabled { throw BackendError.notConnected }
+        if isRead,
+            !AeroSpaceVersion.matches(pinnedTag: pinnedTag, serverVersionAndHash: answer.serverVersionAndHash)
+        {
+            throw BackendError.notConnected
+        }
+        return answer
+    }
+
+    private func requireSuccess(_ answer: AeroSpaceAnswer) throws {
+        guard answer.exitCode == 0 else {
+            let line = answer.stderr.split(separator: "\n").first.map(String.init) ?? "exit code \(answer.exitCode)"
+            throw BackendError.unknown(reason: "AeroSpace refused the command: \(LogPolicy.clipped(line))")
+        }
+    }
+}

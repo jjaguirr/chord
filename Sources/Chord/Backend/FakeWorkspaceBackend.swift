@@ -15,9 +15,16 @@ public enum FakeFault: Equatable, Sendable {
 
 /// Deterministic in-memory `WorkspaceBackend` for tests. No clocks, no randomness,
 /// no I/O. Faults are consumed one per call, in the order they were queued.
+///
+/// Every window sits in a `GridSlot`. A window handed in with a `Place` starts in that
+/// place's cell in row 1, and the shown cell starts at row 1, column 1. A window whose
+/// slot is in a column `Place` cannot name (the vault) is never reported: it is an
+/// unknown window to every call, as the backend contract requires.
 public actor FakeWorkspaceBackend: WorkspaceBackend {
     private var monitors: [MonitorSnapshot]
     private var windows: [WindowSnapshot]
+    private var slots: [WindowID: GridSlot]
+    private var shown: GridCell = .first
     private var focused: WindowID?
     private var stacking: [WindowID]
     private var connected = true
@@ -26,6 +33,11 @@ public actor FakeWorkspaceBackend: WorkspaceBackend {
     public init(monitors: [MonitorSnapshot], windows: [WindowSnapshot], focusedWindow: WindowID? = nil) {
         self.monitors = monitors
         self.windows = windows
+        self.slots = Dictionary(
+            windows.compactMap { window in
+                GridSlot(row: GridCell.first.row, place: window.place).map { (window.id, $0) }
+            },
+            uniquingKeysWith: { first, _ in first })
         self.focused = focusedWindow
         self.stacking = windows.map(\.id)
     }
@@ -38,16 +50,48 @@ public actor FakeWorkspaceBackend: WorkspaceBackend {
     public func snapshot() async throws -> BackendSnapshot {
         try guardConnected()
         try failIfReadFaulted()
-        return BackendSnapshot(monitors: monitors, windows: windows, focusedWindow: focused, stackingOrder: stacking)
+        let visible = reportedWindows()
+        let ids = Set(visible.map(\.id))
+        return BackendSnapshot(
+            monitors: monitors, windows: visible,
+            focusedWindow: focused.flatMap { ids.contains($0) ? $0 : nil },
+            stackingOrder: stacking.filter(ids.contains))
     }
 
     @discardableResult
     public func moveWindow(_ id: WindowID, to place: Place) async throws -> Place {
         try mutate(id) { index in
             let previous = windows[index].place
+            // A window with a reported place always has a slot; the bench needs no row.
+            if let slot = GridSlot(row: shown.row, place: place) { slots[id] = slot }
             windows[index] = windows[index].with(place: place)
             return previous
         }
+    }
+
+    @discardableResult
+    public func show(_ cell: GridCell) async throws -> GridCell? {
+        try perform {
+            let previous = shown
+            shown = cell
+            return previous
+        }
+    }
+
+    @discardableResult
+    public func moveWindow(_ id: WindowID, to cell: GridCell) async throws -> GridSlot {
+        try mutate(id) { index in
+            let previous = slots[id] ?? .bench
+            slots[id] = .cell(cell)
+            if let place = cell.place { windows[index] = windows[index].with(place: place) }
+            return previous
+        }
+    }
+
+    public func listWindows(in cell: GridCell) async throws -> [WindowID] {
+        try guardConnected()
+        try failIfReadFaulted()
+        return reportedWindows().map(\.id).filter { slots[$0] == .cell(cell) }
     }
 
     @discardableResult
@@ -77,16 +121,32 @@ public actor FakeWorkspaceBackend: WorkspaceBackend {
         connected = true
     }
 
+    /// Windows a caller may see: those in the bench or in a column `Place` can name.
+    private func reportedWindows() -> [WindowSnapshot] {
+        windows.filter { slots[$0.id]?.place != nil }
+    }
+
     /// Applies `body` to the window's index with the scripted fault ordering:
     /// guard, unknown-window check, fault, apply, lost-reply.
     private func mutate<T>(_ id: WindowID, _ body: (Int) -> T) throws -> T {
         try guardConnected()
-        guard let index = windows.firstIndex(where: { $0.id == id }) else {
+        guard let index = windows.firstIndex(where: { $0.id == id }), slots[id]?.place != nil else {
             throw BackendError.unknownWindow(id)
         }
         let fault = consumeFaultValue()
         try failIfBeforeApply(fault)
         let result = body(index)
+        try failIfReplyLost(fault)
+        return result
+    }
+
+    /// Applies `body` with the scripted fault ordering for a change that names no
+    /// window: guard, fault, apply, lost-reply.
+    private func perform<T>(_ body: () -> T) throws -> T {
+        try guardConnected()
+        let fault = consumeFaultValue()
+        try failIfBeforeApply(fault)
+        let result = body()
         try failIfReplyLost(fault)
         return result
     }
@@ -150,6 +210,7 @@ extension FakeWorkspaceBackend {
     /// Simulates the user closing a window; not a Chord change, so it consumes no fault.
     public func removeWindow(_ id: WindowID) {
         windows.removeAll { $0.id == id }
+        slots[id] = nil
         stacking.removeAll { $0 == id }
         if focused == id { focused = nil }
     }
