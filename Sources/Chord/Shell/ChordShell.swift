@@ -290,11 +290,18 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func copyDiagnostics() {
         // Read-only: writes only the clipboard, which Chord does not own, so there is no
         // inverse to record. The copy itself is logged.
-        var text = DiagnosticsCollector.render(config: config)
-        if let capture = inputCapture { text += "\n\n" + capture.status().render() }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        ActionLog.live.write("diagnostics: copied to clipboard")
+        let config = config
+        Task { [weak self] in
+            let health = await Task.detached {
+                AeroSpaceDoctor.check(pinnedTag: config.backend.aerospaceTag)
+            }.value
+            guard let self else { return }
+            var text = DiagnosticsCollector.render(config: config, aerospaceHealth: health)
+            if let capture = self.inputCapture { text += "\n\n" + capture.status().render() }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            ActionLog.live.write("diagnostics: copied to clipboard")
+        }
     }
 
     // MARK: Input capture

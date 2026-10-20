@@ -58,6 +58,20 @@ public final class AXWindowBackend: WorkspaceBackend, @unchecked Sendable {
     }
 
     @discardableResult
+    public func show(_ cell: GridCell) async throws -> GridCell? {
+        throw BackendError.unknown(reason: "the Accessibility backend has no workspaces")
+    }
+
+    @discardableResult
+    public func moveWindow(_ id: WindowID, to slot: GridSlot) async throws -> GridSlot {
+        throw BackendError.unknown(reason: "the Accessibility backend has no workspaces")
+    }
+
+    public func listWindows(in cell: GridCell) async throws -> [WindowID] {
+        throw BackendError.unknown(reason: "the Accessibility backend has no workspaces")
+    }
+
+    @discardableResult
     public func applyFrame(_ id: WindowID, to frame: ScreenRect) async throws -> ScreenRect {
         guard isTrusted() else { throw BackendError.notConnected }
         let window = try element(for: id)
