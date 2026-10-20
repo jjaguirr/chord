@@ -34,7 +34,7 @@ event sequences for tap/hold, direction chords, carry repeats and edge
 snapping, and reshape intents. Executor operations are tested through the fake
 backend but are not wired into the executable. Option+0 taps, Option+R then hjkl, and Option+Shift+hjkl move the focused window
 through the Accessibility backend, and Option+hjkl moves focus (see the Live motion and Look rows); no other key moves a window or focus.
-No real substrate is wired; see the `WorkspaceBackend` row above. The app
+The AeroSpace workspace adapter exists but nothing in the app drives it yet; see the `Workspace grid and AeroSpace adapter` row above. The app
 shell does not yet integrate window operations.
 
 `swift build` succeeds. `swift test` is currently blocked because this machine's Swift installation cannot load the `TestingMacros` plugin; the existing test target fails before tests execute.
