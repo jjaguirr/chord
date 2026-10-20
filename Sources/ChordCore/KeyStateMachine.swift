@@ -19,6 +19,9 @@ public enum KeyInput: Equatable, Sendable {
 public enum KeyIntent: Equatable, Sendable {
   case look(PickDirection)
   case carry(dx: Double, dy: Double)
+  /// A fresh carry press with the window already against the visible frame's edge in
+  /// these directions: carry it to the adjacent monitor that way, if there is one.
+  case carryAcross(PickDirection)
   case reshape(aspectDelta: Double, areaDelta: Double)
   case unfold
   case spread
@@ -213,8 +216,24 @@ public struct KeyStateMachine: Sendable {
     -> KeyIntent?
   {
     guard vector.x != 0 || vector.y != 0 else { return nil }
+    if ticks == 0, let across = crossing(vector: vector, rect: rect, edges: edges) {
+      return .carryAcross(across)
+    }
     let delta = carry(vector: vector, ticks: ticks, rect: rect, edges: edges)
     return .carry(dx: delta.dx, dy: delta.dy)
+  }
+  /// The pressed directions in which the window already sits against (or past) the
+  /// visible frame's edge, within one point. Only a fresh press crosses: a held key's
+  /// repeats stop at the edge, so one hold never skips over a whole monitor.
+  private func crossing(vector: PickDirection, rect: PickerRect, edges: Edges) -> PickDirection? {
+    let slack = 1.0
+    let x =
+      vector.x < 0 && rect.x <= edges.left + slack ? -1
+      : vector.x > 0 && rect.x + rect.width >= edges.right - slack ? 1 : 0
+    let y =
+      vector.y < 0 && rect.y <= edges.top + slack ? -1
+      : vector.y > 0 && rect.y + rect.height >= edges.bottom - slack ? 1 : 0
+    return x == 0 && y == 0 ? nil : PickDirection(x: x, y: y)
   }
   private func direction(_ key: ChordKey) -> PickDirection? {
     switch key {
