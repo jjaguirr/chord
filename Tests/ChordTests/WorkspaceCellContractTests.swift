@@ -54,6 +54,17 @@ struct WorkspaceCellContractTests {
             uniqueKeysWithValues: try await backend.snapshot().windows.map { ($0.id.rawValue, $0.place) })
     }
 
+    private func allCells(_ backend: any WorkspaceBackend) async throws -> [String: [WindowID]] {
+        var listed: [String: [WindowID]] = [:]
+        for row in 1...3 {
+            for column in 1...GridCell.columnCount {
+                let at = cell(row, column)
+                listed[at.name] = try await backend.listWindows(in: at)
+            }
+        }
+        return listed
+    }
+
     // MARK: Reads
 
     @Test(arguments: ContractSubject.allCases)
@@ -67,14 +78,21 @@ struct WorkspaceCellContractTests {
     }
 
     @Test(arguments: ContractSubject.allCases)
-    func snapshotPlacesAreTheCellsColumn(subject: ContractSubject) async throws {
+    func snapshotReportsTheBenchAndTheShownRowsColumnsOnly(subject: ContractSubject) async throws {
         let backend = try await subject.make()
 
         let placed = try await places(backend)
         #expect(placed[10] == .workspace(.one))
         #expect(placed[11] == .workspace(.two))
         #expect(placed[12] == .bench)
-        #expect(placed[13] == .workspace(.three))
+        #expect(placed[13] == nil)
+
+        try await backend.show(cell(2, 1))
+        let inRowTwo = try await places(backend)
+        #expect(inRowTwo[13] == .workspace(.three))
+        #expect(inRowTwo[10] == nil)
+        #expect(inRowTwo[11] == nil)
+        #expect(inRowTwo[12] == .bench)
     }
 
     // MARK: Show
@@ -94,10 +112,13 @@ struct WorkspaceCellContractTests {
     func showMovesNoWindow(subject: ContractSubject) async throws {
         let backend = try await subject.make()
         let before = try await places(backend)
+        let cells = try await allCells(backend)
 
         try await backend.show(cell(3, 7))
+        try await backend.show(cell(1, 1))
 
         #expect(try await places(backend) == before)
+        #expect(try await allCells(backend) == cells)
     }
 
     // MARK: Move
@@ -110,7 +131,7 @@ struct WorkspaceCellContractTests {
         #expect(left == .cell(cell(1, 1)))
         #expect(try await backend.listWindows(in: cell(2, 5)) == [WindowID(10)])
         #expect(try await backend.listWindows(in: cell(1, 1)).isEmpty)
-        #expect(try await places(backend)[10] == .workspace(.five))
+        #expect(try await places(backend)[10] == nil)
 
         guard case .cell(let origin) = left else {
             Issue.record("a window that left a cell must report that cell")
@@ -144,10 +165,33 @@ struct WorkspaceCellContractTests {
         let backend = try await subject.make()
         try await backend.show(cell(2, 1))
 
-        #expect(try await backend.moveWindow(WindowID(10), to: .workspace(.six)) == .workspace(.one))
+        #expect(try await backend.moveWindow(WindowID(13), to: .workspace(.six)) == .workspace(.three))
 
-        #expect(try await backend.listWindows(in: cell(2, 6)) == [WindowID(10)])
+        #expect(try await backend.listWindows(in: cell(2, 6)) == [WindowID(13)])
         #expect(try await backend.listWindows(in: cell(1, 6)).isEmpty)
+    }
+
+    @Test(arguments: ContractSubject.allCases)
+    func aWindowInAnotherRowIsUnknownToThePlaceApiAndFaithfulThroughTheCellApi(subject: ContractSubject) async throws {
+        let backend = try await subject.make()
+        try await backend.show(cell(2, 1))
+        try await backend.moveWindow(WindowID(10), to: cell(1, 3))
+        let cells = try await allCells(backend)
+
+        #expect(try await places(backend)[10] == nil)
+        await #expect(throws: BackendError.unknownWindow(WindowID(10))) {
+            try await backend.moveWindow(WindowID(10), to: .bench)
+        }
+        await #expect(throws: BackendError.unknownWindow(WindowID(10))) {
+            try await backend.moveWindow(WindowID(10), to: .workspace(.three))
+        }
+        #expect(try await allCells(backend) == cells)
+
+        let left = try await backend.moveWindow(WindowID(10), to: cell(2, 3))
+        #expect(left == .cell(cell(1, 3)))
+        #expect(try await places(backend)[10] == .workspace(.three))
+        #expect(try await backend.moveWindow(WindowID(10), to: cell(1, 3)) == .cell(cell(2, 3)))
+        #expect(try await backend.listWindows(in: cell(1, 3)) == [WindowID(10)])
     }
 
     @Test(arguments: ContractSubject.allCases)

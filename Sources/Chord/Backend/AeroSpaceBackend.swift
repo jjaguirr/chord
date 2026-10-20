@@ -12,6 +12,11 @@ import Foundation
 /// `9`) is not Chord's: its windows are never reported, listed, or moved, and are
 /// unknown to every caller exactly like a window in the vault column.
 ///
+/// The `Place`-typed API acts only on the row showing now (the focused workspace's row):
+/// `snapshot()` omits windows sitting in other rows, and `moveWindow(_, to: Place)` on one
+/// throws `.unknownWindow` with nothing changed. Those windows stay reachable through
+/// `listWindows(in:)` and `moveWindow(_, to: GridCell)`, which report a faithful `GridSlot`.
+///
 /// Every call returns a confirmed result or throws, and a failure is never silent
 /// success: a server that is unreachable, disabled, or not the pinned version throws
 /// `.notConnected` (nothing was applied); any other failure after a command may have
@@ -47,8 +52,10 @@ public actor AeroSpaceBackend: WorkspaceBackend {
     public func snapshot() async throws -> BackendSnapshot {
         let rows = try await readWindows()
         let focused = try await readFocusedWindow()
+        let shown = try await shownRow()
         let reported = rows.compactMap { row -> (Row, Place)? in
-            row.slot.place.map { (row, $0) }
+            guard row.isPlaced(inRow: shown), let place = row.slot.place else { return nil }
+            return (row, place)
         }
         let bounds = frames(reported.map(\.0.id))
         let windows = reported.compactMap { row, place -> WindowSnapshot? in
@@ -89,12 +96,12 @@ public actor AeroSpaceBackend: WorkspaceBackend {
 
     @discardableResult
     public func moveWindow(_ id: WindowID, to place: Place) async throws -> Place {
-        let row = try await shownRow()
-        guard let slot = GridSlot(row: row, place: place) else {
-            throw BackendError.unknown(reason: "no workspace for that place in row \(row)")
+        let shown = try await shownRow()
+        guard let slot = GridSlot(row: shown, place: place) else {
+            throw BackendError.unknown(reason: "no workspace for that place in row \(shown)")
         }
-        let previous = try await relocate(id, to: slot)
-        // A reported window is always on the bench or in a column `Place` names.
+        let previous = try await relocate(id, to: slot, placedInRow: shown)
+        // A window placed in the shown row is on the bench or in a column `Place` names.
         return previous.place ?? .bench
     }
 
@@ -122,16 +129,18 @@ public actor AeroSpaceBackend: WorkspaceBackend {
 
     /// Moves `id` to `slot` and returns the slot it left. Reads first, which proves the
     /// window exists and the server is the pinned version; a window already in `slot`
-    /// is left alone and nothing is sent.
-    private func relocate(_ id: WindowID, to slot: GridSlot) async throws -> GridSlot {
-        guard let row = try await readWindows().first(where: { $0.id == id }) else {
+    /// is left alone and nothing is sent. With `placedInRow`, a window in another row is
+    /// unknown, because the `Place` API cannot name where it is.
+    private func relocate(_ id: WindowID, to slot: GridSlot, placedInRow shown: Int? = nil) async throws -> GridSlot {
+        guard let found = try await readWindows().first(where: { $0.id == id }) else {
             throw BackendError.unknownWindow(id)
         }
         // A window in the vault column is unknown to every caller.
-        guard row.slot.place != nil else { throw BackendError.unknownWindow(id) }
-        if row.slot == slot { return row.slot }
+        guard found.slot.place != nil else { throw BackendError.unknownWindow(id) }
+        if let shown, !found.isPlaced(inRow: shown) { throw BackendError.unknownWindow(id) }
+        if found.slot == slot { return found.slot }
         try requireSuccess(try await send(.moveWindow(id, toWorkspace: slot.name), isRead: false))
-        return row.slot
+        return found.slot
     }
 
     private func shownRow() async throws -> Int {
@@ -146,6 +155,15 @@ public actor AeroSpaceBackend: WorkspaceBackend {
         let slot: GridSlot
         let isFloating: Bool
         let appName: String
+
+        /// Whether the `Place` API reports this window when `shown` is the row showing:
+        /// on the bench, or in a column of that row.
+        func isPlaced(inRow shown: Int) -> Bool {
+            switch slot {
+            case .bench: return true
+            case .cell(let cell): return cell.row == shown && cell.place != nil
+            }
+        }
     }
 
     private func readWindows() async throws -> [Row] {

@@ -114,7 +114,10 @@ public protocol WorkspaceBackend: Sendable {
     /// with its ordinary snapshot.
     func visibleSnapshot() async throws -> BackendSnapshot
 
-    /// Moves a window to another place and returns the place it left.
+    /// Moves a window to another place and returns the place it left. The `Place` API
+    /// acts only on the row showing now: the place lands in that row, and a window
+    /// sitting in another row is not reported by `snapshot()` and is an unknown window
+    /// here (nothing changes). Such a window is reached through the cell-typed API.
     @discardableResult
     func moveWindow(_ id: WindowID, to place: Place) async throws -> Place
 
@@ -124,10 +127,10 @@ public protocol WorkspaceBackend: Sendable {
     @discardableResult
     func show(_ cell: GridCell) async throws -> GridCell?
 
-    /// Moves a window into `cell` and returns the slot it left, so the Executor can
-    /// record an inverse: a cell restores with this method, the bench with the
-    /// `Place`-typed `moveWindow`. A window in the vault column is not reported by any
-    /// read, so it is an unknown window here too; it cannot be moved back by Chord.
+    /// Moves a window into `cell`, in any row, and returns the slot it left, so the
+    /// Executor can record an inverse: a cell restores with this method, the bench with
+    /// the `Place`-typed `moveWindow`. A window in the vault column is not reported by
+    /// any read, so it is an unknown window here too; it cannot be moved back by Chord.
     @discardableResult
     func moveWindow(_ id: WindowID, to cell: GridCell) async throws -> GridSlot
 

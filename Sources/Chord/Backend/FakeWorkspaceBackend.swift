@@ -19,7 +19,9 @@ public enum FakeFault: Equatable, Sendable {
 /// Every window sits in a `GridSlot`. A window handed in with a `Place` starts in that
 /// place's cell in row 1, and the shown cell starts at row 1, column 1. A window whose
 /// slot is in a column `Place` cannot name (the vault) is never reported: it is an
-/// unknown window to every call, as the backend contract requires.
+/// unknown window to every call, as the backend contract requires. The `Place`-typed
+/// API sees only the bench and the shown row: `snapshot()` omits windows in other rows
+/// and `moveWindow(_, to: Place)` treats them as unknown.
 public actor FakeWorkspaceBackend: WorkspaceBackend {
     private var monitors: [MonitorSnapshot]
     private var windows: [WindowSnapshot]
@@ -60,9 +62,9 @@ public actor FakeWorkspaceBackend: WorkspaceBackend {
 
     @discardableResult
     public func moveWindow(_ id: WindowID, to place: Place) async throws -> Place {
-        try mutate(id) { index in
+        try mutate(id, inShownRowOnly: true) { index in
             let previous = windows[index].place
-            // A window with a reported place always has a slot; the bench needs no row.
+            // A window in the shown row always has a slot; the bench needs no row.
             if let slot = GridSlot(row: shown.row, place: place) { slots[id] = slot }
             windows[index] = windows[index].with(place: place)
             return previous
@@ -91,7 +93,7 @@ public actor FakeWorkspaceBackend: WorkspaceBackend {
     public func listWindows(in cell: GridCell) async throws -> [WindowID] {
         try guardConnected()
         try failIfReadFaulted()
-        return reportedWindows().map(\.id).filter { slots[$0] == .cell(cell) }
+        return windows.map(\.id).filter { slots[$0] == .cell(cell) && cell.place != nil }
     }
 
     @discardableResult
@@ -121,16 +123,27 @@ public actor FakeWorkspaceBackend: WorkspaceBackend {
         connected = true
     }
 
-    /// Windows a caller may see: those in the bench or in a column `Place` can name.
+    /// Windows the `Place` API reports: on the bench or in a column of the shown row.
     private func reportedWindows() -> [WindowSnapshot] {
-        windows.filter { slots[$0.id]?.place != nil }
+        windows.filter { isPlacedInShownRow($0.id) }
+    }
+
+    private func isPlacedInShownRow(_ id: WindowID) -> Bool {
+        switch slots[id] {
+        case .bench: return true
+        case .cell(let cell): return cell.row == shown.row && cell.place != nil
+        case nil: return false
+        }
     }
 
     /// Applies `body` to the window's index with the scripted fault ordering:
-    /// guard, unknown-window check, fault, apply, lost-reply.
-    private func mutate<T>(_ id: WindowID, _ body: (Int) -> T) throws -> T {
+    /// guard, unknown-window check, fault, apply, lost-reply. With `inShownRowOnly`, a
+    /// window in another row is unknown too.
+    private func mutate<T>(_ id: WindowID, inShownRowOnly: Bool = false, _ body: (Int) -> T) throws -> T {
         try guardConnected()
-        guard let index = windows.firstIndex(where: { $0.id == id }), slots[id]?.place != nil else {
+        guard let index = windows.firstIndex(where: { $0.id == id }), slots[id]?.place != nil,
+            !inShownRowOnly || isPlacedInShownRow(id)
+        else {
             throw BackendError.unknownWindow(id)
         }
         let fault = consumeFaultValue()

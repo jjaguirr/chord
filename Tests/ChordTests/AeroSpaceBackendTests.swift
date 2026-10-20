@@ -143,7 +143,8 @@ struct AeroSpaceBackendTests {
     }
 
     @Test func movingToTheBenchUsesTheBenchWorkspaceNameInAnyRow() async throws {
-        let server = makeServer()
+        let server = FakeAeroSpaceServer(
+            windows: [(10, "r2-1", "Terminal")], focusedWorkspace: "r1-1")
         let backend = makeBackend(server)
         try await backend.show(cell(2, 1))
 
@@ -154,7 +155,7 @@ struct AeroSpaceBackendTests {
 
     @Test func aPlaceMoveLandsInTheRowShowingNowEvenAfterAnOutsideSwitch() async throws {
         let server = FakeAeroSpaceServer(
-            windows: [(10, "r1-1", "A"), (11, "r1-1", "B")], focusedWorkspace: "r3-1")
+            windows: [(10, "r3-1", "A"), (11, "r1-1", "B")], focusedWorkspace: "r3-1")
         let backend = makeBackend(server)
 
         try await backend.moveWindow(WindowID(10), to: .workspace(.two))
@@ -163,6 +164,27 @@ struct AeroSpaceBackendTests {
 
         #expect(await server.workspace(of: 10) == "r3-2")
         #expect(await server.workspace(of: 11) == "r1-2")
+    }
+
+    @Test func aWindowInAnotherRowIsOutsideThePlaceApiButFaithfulThroughTheCellApi() async throws {
+        let server = FakeAeroSpaceServer(
+            windows: [(10, "r1-3", "Mail"), (11, "r2-1", "Terminal")], focusedWorkspace: "r2-1")
+        let backend = makeBackend(server)
+
+        #expect(try await backend.snapshot().windows.map(\.id) == [WindowID(11)])
+        await #expect(throws: BackendError.unknownWindow(WindowID(10))) {
+            try await backend.moveWindow(WindowID(10), to: .bench)
+        }
+        await #expect(throws: BackendError.unknownWindow(WindowID(10))) {
+            try await backend.moveWindow(WindowID(10), to: .workspace(.three))
+        }
+        #expect(await server.changes.isEmpty)
+        #expect(try await backend.listWindows(in: cell(1, 3)) == [WindowID(10)])
+
+        let left = try await backend.moveWindow(WindowID(10), to: cell(2, 3))
+        #expect(left == .cell(cell(1, 3)))
+        #expect(try await backend.moveWindow(WindowID(10), to: cell(1, 3)) == .cell(cell(2, 3)))
+        #expect(await server.workspace(of: 10) == "r1-3")
     }
 
     @Test func aPlaceMoveAfterReconnectUsesTheServersRowNotARemembered() async throws {
