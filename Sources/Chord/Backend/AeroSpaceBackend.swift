@@ -14,8 +14,11 @@ import Foundation
 ///
 /// The `Place`-typed API acts only on the row showing now (the focused workspace's row):
 /// `snapshot()` omits windows sitting in other rows, and `moveWindow(_, to: Place)` on one
-/// throws `.unknownWindow` with nothing changed. Those windows stay reachable through
-/// `listWindows(in:)` and `moveWindow(_, to: GridCell)`, which report a faithful `GridSlot`.
+/// throws `.unknownWindow` with nothing changed. When the focused workspace is not a grid
+/// cell (the bench, a stock-config `9`, any foreign workspace) no row is showing: `snapshot()`
+/// reports no windows and a `Place`-typed move throws `.unknown` with nothing sent. Windows
+/// stay reachable through `listWindows(in:)` and `moveWindow(_, to: GridSlot)`, which work
+/// in any row and on the bench, whatever is showing, and report a faithful `GridSlot`.
 ///
 /// Every call returns a confirmed result or throws, and a failure is never silent
 /// success: a server that is unreachable, disabled, or not the pinned version throws
@@ -54,7 +57,7 @@ public actor AeroSpaceBackend: WorkspaceBackend {
         let focused = try await readFocusedWindow()
         let shown = try await shownRow()
         let reported = rows.compactMap { row -> (Row, Place)? in
-            guard row.isPlaced(inRow: shown), let place = row.slot.place else { return nil }
+            guard let shown, row.isPlaced(inRow: shown), let place = row.slot.place else { return nil }
             return (row, place)
         }
         let bounds = frames(reported.map(\.0.id))
@@ -90,13 +93,15 @@ public actor AeroSpaceBackend: WorkspaceBackend {
     }
 
     @discardableResult
-    public func moveWindow(_ id: WindowID, to cell: GridCell) async throws -> GridSlot {
-        try await relocate(id, to: .cell(cell))
+    public func moveWindow(_ id: WindowID, to slot: GridSlot) async throws -> GridSlot {
+        try await relocate(id, to: slot)
     }
 
     @discardableResult
     public func moveWindow(_ id: WindowID, to place: Place) async throws -> Place {
-        let shown = try await shownRow()
+        guard let shown = try await shownRow() else {
+            throw BackendError.unknown(reason: "no row is showing: the focused workspace is not a grid cell")
+        }
         guard let slot = GridSlot(row: shown, place: place) else {
             throw BackendError.unknown(reason: "no workspace for that place in row \(shown)")
         }
@@ -143,9 +148,9 @@ public actor AeroSpaceBackend: WorkspaceBackend {
         return found.slot
     }
 
-    private func shownRow() async throws -> Int {
-        guard let cell = GridCell(name: try await readFocusedWorkspace()) else { return GridCell.first.row }
-        return cell.row
+    /// The row of the focused workspace, or nil when it is not a grid cell.
+    private func shownRow() async throws -> Int? {
+        GridCell(name: try await readFocusedWorkspace())?.row
     }
 
     // MARK: Protocol

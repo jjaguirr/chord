@@ -117,7 +117,10 @@ public protocol WorkspaceBackend: Sendable {
     /// Moves a window to another place and returns the place it left. The `Place` API
     /// acts only on the row showing now: the place lands in that row, and a window
     /// sitting in another row is not reported by `snapshot()` and is an unknown window
-    /// here (nothing changes). Such a window is reached through the cell-typed API.
+    /// here (nothing changes). Such a window is reached through the slot-typed API.
+    /// When what is showing is not a grid cell (the bench, or a workspace Chord did not
+    /// create) no row is showing: `snapshot()` reports no windows and this move throws
+    /// `.unknown` with nothing changed. It never falls back to a default row.
     @discardableResult
     func moveWindow(_ id: WindowID, to place: Place) async throws -> Place
 
@@ -127,12 +130,13 @@ public protocol WorkspaceBackend: Sendable {
     @discardableResult
     func show(_ cell: GridCell) async throws -> GridCell?
 
-    /// Moves a window into `cell`, in any row, and returns the slot it left, so the
-    /// Executor can record an inverse: a cell restores with this method, the bench with
-    /// the `Place`-typed `moveWindow`. A window in the vault column is not reported by
-    /// any read, so it is an unknown window here too; it cannot be moved back by Chord.
+    /// Moves a window into `slot`, in any row or on the bench, and returns the slot it
+    /// left. Moving the window back to the returned slot is the inverse, in any row and
+    /// whatever is showing. Slot-typed, so it is not subject to the shown-row rule of the
+    /// `Place`-typed move. A window in the vault column is not reported by any read, so
+    /// it is an unknown window here too; it cannot be moved back by Chord.
     @discardableResult
-    func moveWindow(_ id: WindowID, to cell: GridCell) async throws -> GridSlot
+    func moveWindow(_ id: WindowID, to slot: GridSlot) async throws -> GridSlot
 
     /// The windows currently in `cell`, in the substrate's order. Always empty for the
     /// vault column: its windows are never reported.
@@ -159,5 +163,11 @@ public protocol WorkspaceBackend: Sendable {
 extension WorkspaceBackend {
     public func visibleSnapshot() async throws -> BackendSnapshot {
         try await snapshot()
+    }
+
+    /// Moves a window into `cell`; see `moveWindow(_:to: GridSlot)`.
+    @discardableResult
+    public func moveWindow(_ id: WindowID, to cell: GridCell) async throws -> GridSlot {
+        try await moveWindow(id, to: GridSlot.cell(cell))
     }
 }

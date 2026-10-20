@@ -147,8 +147,21 @@ struct WorkspaceCellContractTests {
 
         #expect(try await backend.moveWindow(WindowID(12), to: cell(1, 4)) == .bench)
         #expect(try await places(backend)[12] == .workspace(.four))
-        // The inverse of leaving the bench is the Place-typed move.
-        #expect(try await backend.moveWindow(WindowID(12), to: .bench) == .workspace(.four))
+        #expect(try await backend.moveWindow(WindowID(12), to: GridSlot.bench) == .cell(cell(1, 4)))
+        #expect(try await places(backend)[12] == .bench)
+    }
+
+    @Test(arguments: ContractSubject.allCases)
+    func movingOffTheBenchIntoAnotherRowIsReversibleWhateverRowIsShowing(subject: ContractSubject) async throws {
+        let backend = try await subject.make()
+        try await backend.show(cell(2, 1))
+
+        #expect(try await backend.moveWindow(WindowID(12), to: cell(1, 3)) == .bench)
+        #expect(try await backend.listWindows(in: cell(1, 3)) == [WindowID(12)])
+        #expect(try await places(backend)[12] == nil)
+
+        #expect(try await backend.moveWindow(WindowID(12), to: GridSlot.bench) == .cell(cell(1, 3)))
+        #expect(try await backend.listWindows(in: cell(1, 3)).isEmpty)
         #expect(try await places(backend)[12] == .bench)
     }
 
@@ -180,7 +193,7 @@ struct WorkspaceCellContractTests {
 
         #expect(try await places(backend)[10] == nil)
         await #expect(throws: BackendError.unknownWindow(WindowID(10))) {
-            try await backend.moveWindow(WindowID(10), to: .bench)
+            try await backend.moveWindow(WindowID(10), to: Place.bench)
         }
         await #expect(throws: BackendError.unknownWindow(WindowID(10))) {
             try await backend.moveWindow(WindowID(10), to: .workspace(.three))
@@ -224,7 +237,7 @@ struct WorkspaceCellContractTests {
             try await backend.moveWindow(WindowID(12), to: GridCell(row: 1, column: 1)!)
         }
         await #expect(throws: BackendError.unknownWindow(WindowID(12))) {
-            try await backend.moveWindow(WindowID(12), to: .bench)
+            try await backend.moveWindow(WindowID(12), to: Place.bench)
         }
     }
 

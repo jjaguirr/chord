@@ -81,11 +81,11 @@ public actor FakeWorkspaceBackend: WorkspaceBackend {
     }
 
     @discardableResult
-    public func moveWindow(_ id: WindowID, to cell: GridCell) async throws -> GridSlot {
+    public func moveWindow(_ id: WindowID, to slot: GridSlot) async throws -> GridSlot {
         try mutate(id) { index in
             let previous = slots[id] ?? .bench
-            slots[id] = .cell(cell)
-            if let place = cell.place { windows[index] = windows[index].with(place: place) }
+            slots[id] = slot
+            if let place = slot.place { windows[index] = windows[index].with(place: place) }
             return previous
         }
     }

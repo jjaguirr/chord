@@ -63,7 +63,7 @@ public final class AXWindowBackend: WorkspaceBackend, @unchecked Sendable {
     }
 
     @discardableResult
-    public func moveWindow(_ id: WindowID, to cell: GridCell) async throws -> GridSlot {
+    public func moveWindow(_ id: WindowID, to slot: GridSlot) async throws -> GridSlot {
         throw BackendError.unknown(reason: "the Accessibility backend has no workspaces")
     }
 

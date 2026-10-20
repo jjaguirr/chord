@@ -81,7 +81,7 @@ struct AeroSpaceBackendTests {
             try await backend.moveWindow(WindowID(10), to: self.cell(1, 2))
         }
         await #expect(throws: BackendError.unknownWindow(WindowID(10))) {
-            try await backend.moveWindow(WindowID(10), to: .bench)
+            try await backend.moveWindow(WindowID(10), to: Place.bench)
         }
         await #expect(throws: BackendError.unknownWindow(WindowID(10))) {
             try await backend.moveWindow(WindowID(10), to: .workspace(.two))
@@ -148,7 +148,7 @@ struct AeroSpaceBackendTests {
         let backend = makeBackend(server)
         try await backend.show(cell(2, 1))
 
-        try await backend.moveWindow(WindowID(10), to: .bench)
+        try await backend.moveWindow(WindowID(10), to: GridSlot.bench)
 
         #expect(await server.workspace(of: 10) == "bench")
     }
@@ -173,7 +173,7 @@ struct AeroSpaceBackendTests {
 
         #expect(try await backend.snapshot().windows.map(\.id) == [WindowID(11)])
         await #expect(throws: BackendError.unknownWindow(WindowID(10))) {
-            try await backend.moveWindow(WindowID(10), to: .bench)
+            try await backend.moveWindow(WindowID(10), to: Place.bench)
         }
         await #expect(throws: BackendError.unknownWindow(WindowID(10))) {
             try await backend.moveWindow(WindowID(10), to: .workspace(.three))
@@ -199,6 +199,31 @@ struct AeroSpaceBackendTests {
         #expect(await server.workspace(of: 10) == "r1-5")
     }
 
+    @Test(arguments: ["9", "bench", "2"])
+    func whenNoRowIsShowingThePlaceApiSeesNothingAndRefusesButTheSlotApiWorks(focused: String) async throws {
+        let server = FakeAeroSpaceServer(
+            windows: [(10, "r1-1", "Terminal"), (11, "bench", "Notes")], focusedWorkspace: focused)
+        let backend = makeBackend(server)
+
+        #expect(try await backend.snapshot().windows.isEmpty)
+        let error = await #expect(throws: BackendError.self) {
+            try await backend.moveWindow(WindowID(10), to: .workspace(.five))
+        }
+        guard case .unknown = error else {
+            Issue.record("a Place move with no row showing must be .unknown, got \(String(describing: error))")
+            return
+        }
+        await #expect(throws: BackendError.self) { try await backend.moveWindow(WindowID(11), to: Place.bench) }
+        #expect(await server.changes.isEmpty)
+
+        #expect(try await backend.listWindows(in: cell(1, 1)) == [WindowID(10)])
+        #expect(try await backend.moveWindow(WindowID(10), to: cell(2, 5)) == .cell(cell(1, 1)))
+        #expect(try await backend.moveWindow(WindowID(11), to: cell(1, 2)) == .bench)
+        #expect(try await backend.moveWindow(WindowID(11), to: GridSlot.bench) == .cell(cell(1, 2)))
+        #expect(await server.workspace(of: 10) == "r2-5")
+        #expect(await server.workspace(of: 11) == "bench")
+    }
+
     // MARK: Failure is never silent success
 
     @Test func aDisabledServerIsNotConnectedForEveryCallAndAppliesNothing() async throws {
@@ -209,7 +234,7 @@ struct AeroSpaceBackendTests {
         await #expect(throws: BackendError.notConnected) { try await backend.snapshot() }
         await #expect(throws: BackendError.notConnected) { try await backend.show(GridCell.first) }
         await #expect(throws: BackendError.notConnected) { try await backend.moveWindow(WindowID(10), to: GridCell.first) }
-        await #expect(throws: BackendError.notConnected) { try await backend.moveWindow(WindowID(10), to: .bench) }
+        await #expect(throws: BackendError.notConnected) { try await backend.moveWindow(WindowID(10), to: Place.bench) }
         await #expect(throws: BackendError.notConnected) { try await backend.listWindows(in: GridCell.first) }
         await #expect(throws: BackendError.notConnected) { try await backend.reconnect() }
         #expect(await server.changes.isEmpty)
