@@ -26,7 +26,7 @@ struct DiagnosticsCollectorTests {
 
         let report = DiagnosticsCollector.render(
             config: config, logFileURL: log.fileURL, crashReportsDirectory: crashes,
-            aerospaceHealth: { AeroSpaceHealth(probe: .socketMissing, pinnedTag: $0) })
+            aerospaceHealth: AeroSpaceHealth(probe: .socketMissing, pinnedTag: config.backend.aerospaceTag))
 
         #expect(report.contains("timing: customized"))
         #expect(report.contains("AeroSpace pin: custom-private-tag"))

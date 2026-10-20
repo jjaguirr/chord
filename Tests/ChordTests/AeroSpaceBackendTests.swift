@@ -64,13 +64,30 @@ struct AeroSpaceBackendTests {
         #expect(snapshot.windows.map(\.appName) == ["My\tOdd App  Name"])
     }
 
-    @Test func aWindowOnAWorkspaceChordDidNotNameIsOnTheBenchAndCanBeMovedBackToIt() async throws {
-        let server = FakeAeroSpaceServer(windows: [(10, "2", "Terminal")], focusedWorkspace: "2")
+    @Test(arguments: ["9", "2"])
+    func aWindowOnAWorkspaceChordDidNotNameIsInvisibleAndImmovable(foreign: String) async throws {
+        let server = FakeAeroSpaceServer(
+            windows: [(10, foreign, "Vault"), (11, "r1-1", "Terminal")], focusedWorkspace: "r1-1")
         let backend = makeBackend(server)
 
-        #expect(try await backend.snapshot().windows.map(\.place) == [.bench])
-        #expect(try await backend.moveWindow(WindowID(10), to: .workspace(.two)) == .bench)
-        #expect(await server.workspace(of: 10) == "r1-2")
+        #expect(try await backend.snapshot().windows.map(\.id) == [WindowID(11)])
+        for row in 1...3 {
+            for column in 1...GridCell.columnCount {
+                let listed = try await backend.listWindows(in: cell(row, column))
+                #expect(!listed.contains(WindowID(10)))
+            }
+        }
+        await #expect(throws: BackendError.unknownWindow(WindowID(10))) {
+            try await backend.moveWindow(WindowID(10), to: self.cell(1, 2))
+        }
+        await #expect(throws: BackendError.unknownWindow(WindowID(10))) {
+            try await backend.moveWindow(WindowID(10), to: .bench)
+        }
+        await #expect(throws: BackendError.unknownWindow(WindowID(10))) {
+            try await backend.moveWindow(WindowID(10), to: .workspace(.two))
+        }
+        #expect(await server.changes.isEmpty)
+        #expect(await server.workspace(of: 10) == foreign)
     }
 
     @Test func aWindowWithNoFrameIsLeftOutNotGuessed() async throws {
@@ -135,18 +152,29 @@ struct AeroSpaceBackendTests {
         #expect(await server.workspace(of: 10) == "bench")
     }
 
-    @Test func theShownRowIsReadOnceAndThenKept() async throws {
+    @Test func aPlaceMoveLandsInTheRowShowingNowEvenAfterAnOutsideSwitch() async throws {
         let server = FakeAeroSpaceServer(
             windows: [(10, "r1-1", "A"), (11, "r1-1", "B")], focusedWorkspace: "r3-1")
         let backend = makeBackend(server)
 
         try await backend.moveWindow(WindowID(10), to: .workspace(.two))
+        await server.setFocusedWorkspace("r1-1")
         try await backend.moveWindow(WindowID(11), to: .workspace(.two))
 
         #expect(await server.workspace(of: 10) == "r3-2")
-        #expect(await server.workspace(of: 11) == "r3-2")
-        let rowReads = await server.sent.filter { $0 == .focusedWorkspace }.count
-        #expect(rowReads == 1)
+        #expect(await server.workspace(of: 11) == "r1-2")
+    }
+
+    @Test func aPlaceMoveAfterReconnectUsesTheServersRowNotARemembered() async throws {
+        let server = FakeAeroSpaceServer(windows: [(10, "r1-1", "A")], focusedWorkspace: "r2-1")
+        let backend = makeBackend(server)
+        try await backend.show(cell(2, 1))
+        await server.setFocusedWorkspace("r1-1")
+        try await backend.reconnect()
+
+        try await backend.moveWindow(WindowID(10), to: .workspace(.five))
+
+        #expect(await server.workspace(of: 10) == "r1-5")
     }
 
     // MARK: Failure is never silent success

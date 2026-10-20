@@ -51,6 +51,8 @@ actor FakeAeroSpaceServer: AeroSpaceTransport {
     func queue(_ faults: [Fault]) { self.faults.append(contentsOf: faults) }
     func setEnabled(_ enabled: Bool) { self.enabled = enabled }
     func setVersion(_ version: String) { self.version = version }
+    /// Simulates a switch made outside Chord (AeroSpace's own bindings, the mouse).
+    func setFocusedWorkspace(_ name: String) { focusedWorkspace = name }
     /// Makes `list-windows --all` answer these lines verbatim.
     func overrideWindowLines(_ lines: [String]?) { rawWindowLines = lines }
     func workspace(of id: Int) -> String? { windows[id]?.workspace }

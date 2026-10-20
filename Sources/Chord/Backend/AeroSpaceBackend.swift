@@ -8,8 +8,9 @@ import Foundation
 ///
 /// Each grid cell is one AeroSpace workspace named `r<row>-<column>` (`GridCell.name`),
 /// and the bench is the workspace `bench`. AeroSpace is flat, so rows exist only in
-/// that naming. Workspaces AeroSpace made on its own (`1`, `2`, ...) are not cells:
-/// their windows are reported on the bench, the undecided pile.
+/// that naming. Any other workspace (AeroSpace's own `1`, `2`, ..., or a stock-config
+/// `9`) is not Chord's: its windows are never reported, listed, or moved, and are
+/// unknown to every caller exactly like a window in the vault column.
 ///
 /// Every call returns a confirmed result or throws, and a failure is never silent
 /// success: a server that is unreachable, disabled, or not the pinned version throws
@@ -28,11 +29,6 @@ public actor AeroSpaceBackend: WorkspaceBackend {
     private let pinnedTag: String
     private let monitors: @Sendable () -> [MonitorSnapshot]
     private let frames: FrameSource
-    // DECISION: a `Place`-typed move lands in the row last shown. The row is learned from
-    // AeroSpace once, then kept as `show` changes it, so a plan of many moves does not
-    // read the focused workspace for each. The alternative, reading it every time, costs
-    // a round trip per window. Chord owns workspace switching, so the cache stays true.
-    private var shownRow: Int?
 
     init(
         transport: any AeroSpaceTransport,
@@ -83,7 +79,6 @@ public actor AeroSpaceBackend: WorkspaceBackend {
         if name != cell.name {
             try requireSuccess(try await send(.showWorkspace(cell.name), isRead: false))
         }
-        shownRow = cell.row
         return previous
     }
 
@@ -94,7 +89,7 @@ public actor AeroSpaceBackend: WorkspaceBackend {
 
     @discardableResult
     public func moveWindow(_ id: WindowID, to place: Place) async throws -> Place {
-        let row = try await rowForPlaces()
+        let row = try await shownRow()
         guard let slot = GridSlot(row: row, place: place) else {
             throw BackendError.unknown(reason: "no workspace for that place in row \(row)")
         }
@@ -139,10 +134,8 @@ public actor AeroSpaceBackend: WorkspaceBackend {
         return row.slot
     }
 
-    private func rowForPlaces() async throws -> Int {
-        if let shownRow { return shownRow }
+    private func shownRow() async throws -> Int {
         guard let cell = GridCell(name: try await readFocusedWorkspace()) else { return GridCell.first.row }
-        shownRow = cell.row
         return cell.row
     }
 
@@ -158,14 +151,14 @@ public actor AeroSpaceBackend: WorkspaceBackend {
     private func readWindows() async throws -> [Row] {
         let answer = try await send(.listAllWindows, isRead: true)
         try requireSuccess(answer)
-        return try answer.stdout.split(separator: "\n", omittingEmptySubsequences: true).map { line in
+        return try answer.stdout.split(separator: "\n", omittingEmptySubsequences: true).compactMap { line in
             let fields = line.split(separator: "\t", maxSplits: 3, omittingEmptySubsequences: false)
             guard fields.count == 4, let id = Int(fields[0]) else {
                 throw BackendError.unknown(reason: "list-windows answered a line this build cannot read")
             }
-            // A workspace Chord did not name is undecided, so it joins the bench.
+            guard let slot = GridSlot(name: String(fields[1])) else { return nil }
             return Row(
-                id: WindowID(id), slot: GridSlot(name: String(fields[1])) ?? .bench,
+                id: WindowID(id), slot: slot,
                 isFloating: fields[2] == "floating", appName: String(fields[3]))
         }
     }
