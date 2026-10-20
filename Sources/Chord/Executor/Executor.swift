@@ -323,10 +323,10 @@ public actor Executor {
     /// with the edge it enters through, its position along the other axis kept and clamped
     /// into that monitor's visible frame (`MonitorAdjacency`, the rule Look also uses).
     /// Adjacency comes from the backend's monitors. One undo entry restores the previous
-    /// frame, and with it the previous monitor. With no monitor that way nothing moves and
-    /// the reason is logged.
+    /// frame, and with it the previous monitor. With no monitor that way the window takes
+    /// the ordinary carry step `(dx, dy)` instead and the reason is logged.
     @discardableResult
-    public func carryAcross(_ direction: PickDirection) async throws -> [Change] {
+    public func carryAcross(_ direction: PickDirection, dx: Double, dy: Double) async throws -> [Change] {
         let snapshot = try await backend.snapshot()
         let (window, context) = try Self.focusedContext(in: snapshot)
         let monitors = snapshot.monitors.map {
@@ -336,10 +336,11 @@ public actor Executor {
         let bounds = context.bounds
         let origin = monitors[MonitorAdjacency.index(holding: bounds.pickerRect, in: monitors)]
         guard let target = MonitorAdjacency.neighbour(of: origin, in: monitors, direction: direction) else {
-            appendLog("carry \(direction.keys): window \(context.id): no monitor that way; nothing moved")
-            return []
+            appendLog("carry \(direction.keys): window \(context.id): no monitor that way; carried within the monitor")
+            return try await carry(dx: dx, dy: dy)
         }
-        let landed = MonitorAdjacency.landing(of: bounds.pickerRect, on: target.bounds, direction: direction)
+        let landed = MonitorAdjacency.landing(
+            of: bounds.pickerRect, from: origin.bounds, on: target.bounds, direction: direction)
         let frame = ScreenRect(x: landed.x, y: landed.y, width: landed.width, height: landed.height)
             .roundedToIntegers()
         guard frame != bounds else { return [] }

@@ -127,11 +127,11 @@ final class WindowMotion {
             } catch {
                 log("carry: \(Self.describe(error))")
             }
-        case .carryAcross(let direction):
+        case .carryAcross(let direction, let dx, let dy):
             await finishRun(reason: "carry")
             do {
                 // The Executor logs the carry or why nothing moved.
-                try await executor.carryAcross(direction)
+                try await executor.carryAcross(direction, dx: dx, dy: dy)
             } catch {
                 log("carry \(direction.keys): \(Self.describe(error))")
             }

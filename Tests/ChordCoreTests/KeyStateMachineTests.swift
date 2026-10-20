@@ -223,7 +223,7 @@ private let testEdges = KeyStateMachine.Edges(left: 0, right: 500, top: 0, botto
   let flushRight = PickerRect(x: 460, y: 100, width: 40, height: 40)
   #expect(
     machine.process(.down(.l, repeat: false, modifiers: shift), at: 0, rect: flushRight, edges: testEdges)
-      == [.carryAcross(PickDirection(x: 1, y: 0))])
+      == [.carryAcross(PickDirection(x: 1, y: 0), dx: 0, dy: 0)])
   #expect(machine.advance(to: 0.1, rect: flushRight, edges: testEdges) == [.carry(dx: 0, dy: 0)])
 
   // Not yet flush (outside the magnet's reach too): an ordinary carry.
@@ -231,4 +231,13 @@ private let testEdges = KeyStateMachine.Edges(left: 0, right: 500, top: 0, botto
   #expect(
     inside.process(.down(.l, repeat: false, modifiers: shift), at: 0, rect: testRect, edges: testEdges)
       == [.carry(dx: 10, dy: 0)])
+}
+
+@Test func aDiagonalPressFlushOnOneAxisCarriesTheOrdinaryStepAsTheFallback() {
+  var machine = KeyStateMachine()
+  let flushRight = PickerRect(x: 460, y: 100, width: 40, height: 40)
+  _ = machine.process(.down(.l, repeat: false, modifiers: shift), at: 0, rect: testRect, edges: testEdges)
+  let intents = machine.process(
+    .down(.j, repeat: false, modifiers: shift), at: 0.01, rect: flushRight, edges: testEdges)
+  #expect(intents == [.carryAcross(PickDirection(x: 1, y: 0), dx: 0, dy: 10)])
 }

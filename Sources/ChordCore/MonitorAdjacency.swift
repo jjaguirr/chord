@@ -69,19 +69,24 @@ public enum MonitorAdjacency {
         }?.element
     }
 
-    /// Where a window lands on `target` after a carry in `direction`: the same size, flush
-    /// with the edge it enters through on each pressed axis, and its position on any other
-    /// axis kept, clamped into `target`. A window larger than `target` cannot fit with its
-    /// size kept; it is aligned to the target's top-left corner instead.
-    public static func landing(of window: PickerRect, on target: PickerRect, direction: PickDirection) -> PickerRect {
-        func place(_ origin: Double, _ size: Double, _ low: Double, _ extent: Double, _ step: Int) -> Double {
+    /// Where a window held by `origin` lands on `target` after a carry in `direction`: the
+    /// same size, flush with the edge it enters through on each pressed axis along which
+    /// `target` really lies beyond `origin`, and its position on any other axis kept,
+    /// clamped into `target`. A window larger than `target` cannot fit with its size kept;
+    /// it is aligned to the target's top-left corner instead.
+    public static func landing(
+        of window: PickerRect, from origin: PickerRect, on target: PickerRect, direction: PickDirection
+    ) -> PickerRect {
+        func place(_ position: Double, _ size: Double, _ low: Double, _ extent: Double, _ step: Int) -> Double {
             if step > 0 { return low }
             if step < 0 { return max(low, low + extent - size) }
-            return max(low, min(origin, low + extent - size))
+            return max(low, min(position, low + extent - size))
         }
+        let stepX = isBeyond(target, origin, PickDirection(x: direction.x, y: 0)) ? direction.x : 0
+        let stepY = isBeyond(target, origin, PickDirection(x: 0, y: direction.y)) ? direction.y : 0
         return PickerRect(
-            x: place(window.x, window.width, target.x, target.width, direction.x),
-            y: place(window.y, window.height, target.y, target.height, direction.y),
+            x: place(window.x, window.width, target.x, target.width, stepX),
+            y: place(window.y, window.height, target.y, target.height, stepY),
             width: window.width, height: window.height)
     }
 }

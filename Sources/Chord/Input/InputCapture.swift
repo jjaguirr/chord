@@ -388,7 +388,8 @@ final class InputCapture: HotkeySourceDelegate {
         switch intent {
         case .look(let direction): "look(x: \(direction.x), y: \(direction.y))"
         case .carry(let dx, let dy): "carry(dx: \(dx), dy: \(dy))"
-        case .carryAcross(let direction): "carryAcross(x: \(direction.x), y: \(direction.y))"
+        case .carryAcross(let direction, let dx, let dy):
+            "carryAcross(x: \(direction.x), y: \(direction.y), dx: \(dx), dy: \(dy))"
         case .reshape(let aspect, let area): "reshape(aspect: \(aspect), area: \(area))"
         case .unfold: "unfold"
         case .spread: "spread"
