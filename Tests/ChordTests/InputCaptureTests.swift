@@ -117,13 +117,15 @@ struct InputCaptureTests {
         #expect(catalog.bindings.count == labels.count)
         #expect(catalog.bindings.allSatisfy { $0.label.hasPrefix("Option+") })
         #expect(!labels.contains { $0.localizedCaseInsensitiveContains("ctrl") })
-        let expected = ["Option+0", "Option+R", "Option+Tab", "Option+`", "Option+Shift+`"]
+        let expected = ["Option+0", "Option+R", "Option+W", "Option+Tab", "Option+`", "Option+Shift+`"]
             + "HJKL".flatMap { ["Option+\($0)", "Option+Shift+\($0)"] }
             + (1...9).flatMap { ["Option+\($0)", "Option+Shift+\($0)"] }
         #expect(labels == Set(expected))
-        // 0 and R are tap/hold and hold keys: no Shift variants.
+        // 0, R and W are tap/hold and hold keys: no Shift variants.
         #expect(catalog.binding(for: .digit0, shift: true) == nil)
         #expect(catalog.binding(for: .keyR, shift: true) == nil)
+        #expect(catalog.binding(for: .keyW, shift: true) == nil)
+        #expect(catalog.binding(for: .keyW, shift: false)?.role == .workspaceLayer)
     }
 
     @Test func catalogFollowsConfiguredDirectionKeys() {
@@ -170,6 +172,104 @@ struct InputCaptureTests {
         h.carbon.send("KeyL")
 
         #expect(h.log.has("down Option+L", "intent=reshape(aspect: 0.05, area: 0.0)"))
+    }
+
+    // MARK: Workspace layer (Option+W)
+
+    @Test func holdingWThenHjklStepsTheGridAndShiftCarriesTheWindowAlong() {
+        let h = Harness()
+        let received = HandlerBox()
+        h.capture.intentHandler = { received.intents.append(contentsOf: $0) }
+
+        h.carbon.send("KeyW")
+        for key in ["KeyH", "KeyJ", "KeyK", "KeyL"] {
+            h.carbon.send(key)
+            h.carbon.send(key, .up)
+            h.carbon.send(key, shift: true)
+            h.carbon.send(key, shift: true, .up)
+        }
+        h.carbon.send("KeyW", .up)
+
+        #expect(received.intents == [
+            .stepWorkspace(.left), .carryStepWorkspace(.left),
+            .stepWorkspace(.down), .carryStepWorkspace(.down),
+            .stepWorkspace(.up), .carryStepWorkspace(.up),
+            .stepWorkspace(.right), .carryStepWorkspace(.right),
+        ])
+        #expect(h.log.has("down Option+W", "role=workspace layer", "intent=none"))
+        #expect(h.log.has("down Option+J", "role=direction", "intent=stepWorkspace(down)"))
+        #expect(h.log.has("down Option+Shift+K", "intent=carryStepWorkspace(up)"))
+    }
+
+    @Test func releasingWEndsTheLayerSoHjklLookAgain() {
+        let h = Harness()
+        let received = HandlerBox()
+        h.capture.intentHandler = { received.intents.append(contentsOf: $0) }
+
+        h.carbon.send("KeyW")
+        h.carbon.send("KeyL")
+        h.carbon.send("KeyL", .up)
+        h.carbon.send("KeyW", .up)
+        h.carbon.send("KeyL")
+        h.carbon.send("KeyL", .up)
+
+        #expect(received.intents == [.stepWorkspace(.right), .look(PickDirection(x: 1, y: 0))])
+    }
+
+    @Test func aHeldHjklKeyDoesNotRepeatAStepAndNoTimerIsNeeded() {
+        let h = Harness()
+        let received = HandlerBox()
+        h.capture.intentHandler = { received.intents.append(contentsOf: $0) }
+
+        h.carbon.send("KeyW")
+        h.carbon.send("KeyL")
+        h.carbon.send("KeyL", .autorepeat)
+        h.carbon.send("KeyL", .autorepeat)
+        h.advance(to: 2)
+        h.carbon.send("KeyL", .up)
+
+        #expect(received.intents == [.stepWorkspace(.right)])
+    }
+
+    @Test func escapeCancelsTheLayerButIsNeverConsumed() {
+        let h = Harness()
+        let received = HandlerBox()
+        h.capture.intentHandler = { received.intents.append(contentsOf: $0) }
+
+        h.carbon.send("KeyW")
+        h.carbon.send("KeyJ")
+        h.carbon.send("KeyJ", .up)
+        #expect(h.tap.send("Escape", option: false) == .passThrough)
+        h.tap.send("Escape", option: false, .up)
+        h.carbon.send("KeyJ")
+        h.carbon.send("KeyJ", .up)
+        h.advance(to: 2)
+
+        #expect(received.intents == [.stepWorkspace(.down)])
+    }
+
+    @Test func theTapPathTakesOptionWWhenCarbonRefusesItAndConsumesIt() {
+        let h = Harness { carbon, _ in carbon.failures["Option+W"] = -9878 }
+        let received = HandlerBox()
+        h.capture.intentHandler = { received.intents.append(contentsOf: $0) }
+
+        #expect(h.tap.send("KeyW") == .consume)
+        #expect(h.tap.send("KeyJ") == .passThrough)
+        h.carbon.send("KeyJ")
+
+        #expect(received.intents == [.stepWorkspace(.down)])
+    }
+
+    @Test func controlWIsNeverTheWorkspaceLayer() {
+        let h = Harness()
+        let received = HandlerBox()
+        h.capture.intentHandler = { received.intents.append(contentsOf: $0) }
+
+        #expect(h.tap.send("KeyW", control: true) == .passThrough)
+        h.carbon.send("KeyL")
+        h.carbon.send("KeyL", .up)
+
+        #expect(received.intents == [.look(PickDirection(x: 1, y: 0))])
     }
 
     // MARK: Workspace keys
@@ -410,9 +510,9 @@ struct InputCaptureTests {
 
         #expect(status.problems.isEmpty)
         #expect(status.tap == .enabled)
-        #expect(status.headline == "All 31 hotkeys captured (carbon 31, tap 0).")
+        #expect(status.headline == "All 32 hotkeys captured (carbon 32, tap 0).")
         #expect(h.log.has("self-check accessibility=granted inputMonitoring=granted"))
-        #expect(h.log.has("ready carbon=31 tap=0 none=0"))
+        #expect(h.log.has("ready carbon=32 tap=0 none=0"))
     }
 
     // MARK: Tap routing

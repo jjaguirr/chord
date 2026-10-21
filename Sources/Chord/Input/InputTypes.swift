@@ -22,6 +22,7 @@ struct InputKey: Hashable, Sendable {
     static let tab = InputKey(code: "Tab")
     static let escape = InputKey(code: "Escape")
     static let keyR = InputKey(code: "KeyR")
+    static let keyW = InputKey(code: "KeyW")
     static let digit0 = InputKey(code: "Digit0")
 
     /// Short human label for logs and the menu: `H`, `0`, `` ` ``, `Tab`.
@@ -75,11 +76,13 @@ enum EventDecision: Equatable, Sendable {
 }
 
 /// What a bound key means. Place, bench and Tab keys have no `KeyStateMachine` input: a
-/// press is one workspace intent, made by `InputCapture`.
+/// press is one workspace intent, made by `InputCapture`. The workspace layer key (W) is
+/// held like the reshape key: the state machine turns hjkl into workspace steps while it is down.
 enum HotkeyRole: Hashable, Sendable {
     case place
     case direction(ChordKey)
     case reshape
+    case workspaceLayer
     case unfold
     case bench
     case cycle
@@ -89,6 +92,7 @@ enum HotkeyRole: Hashable, Sendable {
         switch self {
         case .direction(let key): key
         case .reshape: .r
+        case .workspaceLayer: .w
         case .unfold: .zero
         case .place, .bench, .cycle: nil
         }
@@ -99,6 +103,7 @@ enum HotkeyRole: Hashable, Sendable {
         case .place: "place"
         case .direction: "direction"
         case .reshape: "reshape"
+        case .workspaceLayer: "workspace layer"
         case .unfold: "unfold/spread"
         case .bench: "bench"
         case .cycle: "cycle"

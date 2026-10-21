@@ -135,11 +135,14 @@ public struct WorkspaceGrid: Equatable, Sendable {
     public static let defaultRowCount = 3
 
     public let rowCount: Int
+    /// Whether `neighbour` continues from the opposite edge instead of stopping.
+    public let wrap: Bool
     public private(set) var current: GridCell
 
     /// Starts on row 1, column 1. A row count below 1 is raised to 1.
-    public init(rowCount: Int = WorkspaceGrid.defaultRowCount) {
+    public init(rowCount: Int = WorkspaceGrid.defaultRowCount, wrap: Bool = false) {
         self.rowCount = max(1, rowCount)
+        self.wrap = wrap
         self.current = .first
     }
 
@@ -159,9 +162,11 @@ public struct WorkspaceGrid: Equatable, Sendable {
         return previous
     }
 
-    /// The cell one step from `current`. Stops at the edge: no wrap, so a repeated key
-    /// never lands somewhere surprising.
-    public func neighbour(_ step: GridStep) -> GridCell {
+    /// The cell one step from `current`, or nil when the step leaves the grid and the grid
+    /// does not wrap: the edge stops a step, so a repeated key never lands somewhere
+    /// surprising. A grid that wraps continues from the opposite edge; a step that wraps
+    /// onto the cell it started from (one row, or one column) returns `current`.
+    public func neighbour(_ step: GridStep) -> GridCell? {
         var row = current.row
         var column = current.column
         switch step {
@@ -170,8 +175,11 @@ public struct WorkspaceGrid: Equatable, Sendable {
         case .up: row -= 1
         case .down: row += 1
         }
-        return GridCell(row: min(max(row, 1), rowCount), column: min(max(column, 1), GridCell.columnCount))
-            ?? current
+        if wrap {
+            row = (row - 1 + rowCount) % rowCount + 1
+            column = (column - 1 + GridCell.columnCount) % GridCell.columnCount + 1
+        }
+        return GridCell(row: row, column: column).flatMap { contains($0) ? $0 : nil }
     }
 
     /// The cell in the current row that `place` names; nil for the bench.

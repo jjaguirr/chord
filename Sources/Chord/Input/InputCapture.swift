@@ -382,7 +382,7 @@ final class InputCapture: HotkeySourceDelegate {
             return binding.shift ? .carryToBench : .showBench
         case .cycle:
             return .showPrevious
-        case .direction, .reshape, .unfold:
+        case .direction, .reshape, .workspaceLayer, .unfold:
             return nil
         }
     }
@@ -417,6 +417,8 @@ final class InputCapture: HotkeySourceDelegate {
         case .showBench: "showBench"
         case .carryToBench: "carryToBench"
         case .showPrevious: "showPrevious"
+        case .stepWorkspace(let step): "stepWorkspace(\(step))"
+        case .carryStepWorkspace(let step): "carryStepWorkspace(\(step))"
         case .spread: "spread"
         case .abortCharge: "abortCharge"
         }

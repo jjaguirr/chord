@@ -1,5 +1,5 @@
 /// Physical key positions interpreted by the pure key state machine.
-public enum ChordKey: Hashable, Sendable { case h, j, k, l, r, zero, escape }
+public enum ChordKey: Hashable, Sendable { case h, j, k, l, r, w, zero, escape }
 
 public struct KeyModifiers: Equatable, Sendable {
   public var shift: Bool
@@ -36,6 +36,11 @@ public enum KeyIntent: Equatable, Sendable {
   case carryToBench
   /// Option+Tab: show what was showing before.
   case showPrevious
+  /// Option+W held, then h/j/k/l: show the neighbouring cell of the grid. h/l are the
+  /// previous/next column; k/j the previous/next row.
+  case stepWorkspace(GridStep)
+  /// The same with Shift: carry the focused window to that cell and show it.
+  case carryStepWorkspace(GridStep)
   case abortCharge
 }
 
@@ -79,6 +84,10 @@ public struct KeyStateMachine: Sendable {
   private var downKeys: Set<ChordKey> = []
   /// Set by Option+R; cleared when R is released. While set, Option+hjkl reshapes.
   private var reshapeArmed = false
+  /// The Option+W workspace layer. Armed by Option+W, ended by releasing W; Esc cancels it
+  /// until W is released, so a cancelled layer does not fall back to Look or Carry.
+  private var workspaceLayer = WorkspaceLayer.off
+  private enum WorkspaceLayer { case off, armed, cancelled }
   private var chargeStarted: Double?
   private var spreadStarted = false
   private var pendingDirection: (key: ChordKey, at: Double)?
@@ -98,18 +107,30 @@ public struct KeyStateMachine: Sendable {
         reshapeArmed = modifiers.mod
         return []
       }
+      if key == .w {
+        workspaceLayer = modifiers.mod ? .armed : .off
+        return []
+      }
       if key == .zero {
         guard modifiers.mod else { return [] }
         chargeStarted = time
         spreadStarted = false
         return []
       }
-      if key == .escape, chargeStarted != nil {
-        chargeStarted = nil
-        spreadStarted = false
-        return [.abortCharge]
+      if key == .escape {
+        if workspaceLayer == .armed { workspaceLayer = .cancelled }
+        if chargeStarted != nil {
+          chargeStarted = nil
+          spreadStarted = false
+          return [.abortCharge]
+        }
+        return []
       }
       guard direction(key) != nil else { return [] }
+      if workspaceLayer != .off && modifiers.mod {
+        guard workspaceLayer == .armed, let step = workspaceStep(key) else { return [] }
+        return [modifiers.shift ? .carryStepWorkspace(step) : .stepWorkspace(step)]
+      }
       if reshapeArmed && modifiers.mod {
         let (aspect, area) = reshapeDeltas(for: key)
         return [.reshape(aspectDelta: aspect, areaDelta: area)]
@@ -139,6 +160,7 @@ public struct KeyStateMachine: Sendable {
     case .up(let key, _):
       guard downKeys.remove(key) != nil else { return [] }
       if key == .r { reshapeArmed = false }
+      if key == .w { workspaceLayer = .off }
       if key == .zero, let started = chargeStarted {
         chargeStarted = nil
         if !spreadStarted && time - started >= configuration.holdThreshold {
@@ -245,6 +267,15 @@ public struct KeyStateMachine: Sendable {
       vector.y < 0 && rect.y <= edges.top + slack ? -1
       : vector.y > 0 && rect.y + rect.height >= edges.bottom - slack ? 1 : 0
     return x == 0 && y == 0 ? nil : PickDirection(x: x, y: y)
+  }
+  private func workspaceStep(_ key: ChordKey) -> GridStep? {
+    switch key {
+    case .h: .left
+    case .j: .down
+    case .k: .up
+    case .l: .right
+    default: nil
+    }
   }
   private func direction(_ key: ChordKey) -> PickDirection? {
     switch key {

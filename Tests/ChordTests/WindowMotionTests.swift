@@ -271,6 +271,18 @@ struct WindowMotionTests {
         #expect(try await rig.backend.showing() == .cell(.first))
     }
 
+    @Test func workspaceStepIntentsGoThroughTheExecutorAndMoveNoFrame() async throws {
+        let rig = makeRig()
+        let below = GridCell(row: 2, column: 2)!
+        await rig.motion.handle(.intents([.stepWorkspace(.right), .carryStepWorkspace(.down)]))
+
+        #expect(try await rig.backend.showing() == .cell(below))
+        #expect(await rig.backend.slot(of: WindowID(1)) == .cell(below))
+        #expect(rig.log.has("workspace step right: r1-1 -> r1-2"))
+        #expect(rig.log.has("move window 1: bench -> r2-2"))
+        #expect(try await rig.bounds() == start)
+    }
+
     @Test func aWorkspaceKeyClosesAnOpenUnfoldRunFirst() async throws {
         let rig = makeRig()
         await rig.press(at: 0)
