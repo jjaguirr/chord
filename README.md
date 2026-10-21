@@ -14,8 +14,9 @@ windows live and **how you move between them** — and leaves **size** to you.
 > through the Accessibility API directly. Each move is logged and undoable in the
 > Executor (no undo key yet). Option+1-9 shows a workspace column and Option+Shift+1-9
 > carries the focused window there, Option+backtick shows the bench and Option+Tab goes
-> back, through AeroSpace (a pinned server must be running; Chord never starts it). Not
-> yet verified on live windows. Spread is not wired.
+> back, and holding Option+W then h/l/j/k steps the workspace grid (columns, rows; with
+> Shift the window goes along), through AeroSpace (a pinned server must be running; Chord
+> never starts it). Not yet verified on live windows. Spread is not wired.
 
 ## The bet
 
@@ -37,6 +38,7 @@ this is worth keeping. If it doesn't, we find out in weeks.
 | `Mod+hjkl` | Look (move focus) |
 | `Mod+Shift+hjkl` | Carry a window |
 | Hold `Mod+R`, then `hjkl` | Reshape |
+| Hold `Mod+W`, then `hjkl` | Move around the workspace grid: `h`/`l` previous/next column, `k`/`j` previous/next row; with `Shift`, carry the focused window along. Release `W` to end; `Esc` cancels |
 | `Mod+0` tap | Unfold |
 | `Mod+0` hold | Spread |
 

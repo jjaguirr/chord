@@ -11,7 +11,7 @@ struct WorkspaceNavigationTests {
     }
 
     @Test func aColumnIsReadInTheRowShowingNow() {
-        var navigation = WorkspaceNavigation(rowCount: 3)
+        var navigation = WorkspaceNavigation(layout: WorkspaceLayout(rows: 3))
         navigation.observe(cell(2, 4))
 
         #expect(navigation.cell(column: 7)?.name == "r2-7")
@@ -26,7 +26,7 @@ struct WorkspaceNavigationTests {
     }
 
     @Test func theRowIsRememberedWhileTheBenchOrAForeignWorkspaceShows() {
-        var navigation = WorkspaceNavigation(rowCount: 3)
+        var navigation = WorkspaceNavigation(layout: WorkspaceLayout(rows: 3))
         navigation.observe(cell(3, 2))
 
         navigation.observe(.bench)
@@ -108,7 +108,7 @@ struct WorkspaceNavigationTests {
     }
 
     @Test func aCellBeyondTheLastRowDoesNotMoveTheRememberedRow() {
-        var navigation = WorkspaceNavigation(rowCount: 2)
+        var navigation = WorkspaceNavigation(layout: WorkspaceLayout(rows: 2))
         navigation.observe(cell(2, 1))
         navigation.observe(cell(5, 1))
 

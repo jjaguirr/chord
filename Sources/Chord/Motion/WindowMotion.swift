@@ -153,6 +153,10 @@ final class WindowMotion {
             await workspace("carry to bench") { try await self.executor.carryToBench() }
         case .showPrevious:
             await workspace("show previous") { try await self.executor.showPrevious() }
+        case .stepWorkspace(let step):
+            await workspace("workspace step \(step)") { try await self.executor.stepWorkspace(step) }
+        case .carryStepWorkspace(let step):
+            await workspace("carry workspace step \(step)") { try await self.executor.carryStepWorkspace(step) }
         case .spread:
             log("spread: not wired to windows yet; nothing changed")
         case .abortCharge:

@@ -6,6 +6,7 @@
 /// switch without Chord (the mouse, another tool). Callers `observe` what the substrate
 /// reports before they plan, and again after every change they make.
 public struct WorkspaceNavigation: Equatable, Sendable {
+    public let layout: WorkspaceLayout
     public private(set) var grid: WorkspaceGrid
     /// What was showing at the last observation: a cell, the bench, or nil for a workspace
     /// Chord did not create (or nothing observed yet).
@@ -13,8 +14,9 @@ public struct WorkspaceNavigation: Equatable, Sendable {
     /// What was showing before `showing`, when that was a slot Chord can name.
     public private(set) var previous: GridSlot?
 
-    public init(rowCount: Int = WorkspaceGrid.defaultRowCount) {
-        grid = WorkspaceGrid(rowCount: rowCount)
+    public init(layout: WorkspaceLayout = .defaults) {
+        self.layout = layout
+        grid = WorkspaceGrid(rowCount: layout.rows, wrap: layout.wrap)
     }
 
     /// Records what the substrate says is showing now. A change from a known slot makes

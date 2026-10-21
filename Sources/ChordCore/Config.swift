@@ -141,12 +141,14 @@ public struct Config: Equatable, Sendable {
   public let carry: Carry
   public let backend: Backend
   public let updates: Updates
+  /// The workspace grid: rows, their names, and what a step past the edge does.
+  public let workspaces: WorkspaceLayout
   /// Sorted by app name.
   public let standingWishes: [StandingWish]
 
   public static let defaults = Config(
     keys: .defaults, timing: .defaults, carry: .defaults, backend: .defaults,
-    updates: .defaults, standingWishes: [])
+    updates: .defaults, workspaces: .defaults, standingWishes: [])
 
   /// Parses config text. Never traps on any input.
   public static func load(text: String) -> ConfigLoadResult {
@@ -165,6 +167,7 @@ public struct Config: Equatable, Sendable {
     var carry = Carry.defaults
     var backend = Backend.defaults
     var updates = Updates.defaults
+    var workspaces = WorkspaceLayout.defaults
     var wishes: [StandingWish] = []
 
     for table in document.tables {
@@ -191,6 +194,9 @@ public struct Config: Equatable, Sendable {
       case "updates":
         reader.reportUnknownKeys(in: table, known: ["background_check"])
         updates = reader.readUpdates(table)
+      case "workspaces":
+        reader.reportUnknownKeys(in: table, known: ["rows", "row_names", "wrap"])
+        workspaces = reader.readWorkspaces(table)
       case "standing_wishes":
         wishes = reader.readStandingWishes(table)
       default:
@@ -204,7 +210,7 @@ public struct Config: Equatable, Sendable {
     }
     let config = Config(
       keys: keys, timing: timing, carry: carry, backend: backend, updates: updates,
-      standingWishes: wishes.sorted { $0.app < $1.app })
+      workspaces: workspaces, standingWishes: wishes.sorted { $0.app < $1.app })
     return ConfigLoadResult(config: config, diagnostics: [])
   }
 
@@ -236,6 +242,15 @@ public struct Config: Equatable, Sendable {
       "",
       "[updates]",
       "background_check = \(updates.backgroundCheck)",
+      "",
+      "[workspaces]",
+      "rows = \(workspaces.rows)",
+    ]
+    if !workspaces.rowNames.isEmpty {
+      lines.append("row_names = [\(workspaces.rowNames.map(tomlQuoted).joined(separator: ", "))]")
+    }
+    lines += [
+      "wrap = \(workspaces.wrap)",
       "",
       "[standing_wishes]",
     ]
@@ -424,6 +439,65 @@ private struct ConfigReader {
       return .defaults
     }
     return Updates(backgroundCheck: value)
+  }
+
+  mutating func readWorkspaces(_ table: TOMLTable) -> WorkspaceLayout {
+    let d = WorkspaceLayout.defaults
+    let before = diagnostics.count
+    var wrap = d.wrap
+    if let entry = table.entries["wrap"] {
+      if case .boolean(let value) = entry.value {
+        wrap = value
+      } else {
+        diagnostics.append(.wrongType(line: entry.line, key: "wrap", expected: "boolean"))
+      }
+    }
+    let names = readRowNames(table)
+    // Names given alone set the row count; given with `rows` they must agree with it.
+    let rows: Int
+    if let entry = table.entries["rows"] {
+      rows = integer(entry, key: "rows", range: 1...WorkspaceLayout.maxRows) ?? d.rows
+      if let names, diagnostics.count == before, names.count != rows {
+        diagnostics.append(
+          .invalidValue(
+            line: table.entries["row_names"]?.line ?? entry.line, key: "row_names",
+            reason: "rows is \(rows) but \(names.count) names are given"))
+      }
+    } else {
+      rows = names?.count ?? d.rows
+    }
+    guard diagnostics.count == before else { return d }
+    return WorkspaceLayout(rows: rows, rowNames: names ?? [], wrap: wrap)
+  }
+
+  /// `row_names = ["work", "home"]`: one non-empty string per row, at most `maxRows`.
+  private mutating func readRowNames(_ table: TOMLTable) -> [String]? {
+    guard let entry = table.entries["row_names"] else { return nil }
+    guard case .array(let items) = entry.value else {
+      diagnostics.append(.wrongType(line: entry.line, key: "row_names", expected: "array of strings"))
+      return nil
+    }
+    guard (1...WorkspaceLayout.maxRows).contains(items.count) else {
+      diagnostics.append(
+        .invalidValue(
+          line: entry.line, key: "row_names",
+          reason: "expected 1 to \(WorkspaceLayout.maxRows) names, found \(items.count)"))
+      return nil
+    }
+    var names: [String] = []
+    for item in items {
+      guard case .string(let name) = item else {
+        diagnostics.append(.wrongType(line: entry.line, key: "row_names", expected: "array of strings"))
+        return nil
+      }
+      guard !name.allSatisfy({ $0 == " " || $0 == "\t" }) else {
+        diagnostics.append(
+          .invalidValue(line: entry.line, key: "row_names", reason: "a row name is empty"))
+        return nil
+      }
+      names.append(name)
+    }
+    return names
   }
 
   mutating func readStandingWishes(_ table: TOMLTable) -> [StandingWish] {

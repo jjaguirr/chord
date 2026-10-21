@@ -241,3 +241,114 @@ private let testEdges = KeyStateMachine.Edges(left: 0, right: 500, top: 0, botto
     .down(.j, repeat: false, modifiers: shift), at: 0.01, rect: flushRight, edges: testEdges)
   #expect(intents == [.carryAcross(PickDirection(x: 1, y: 0), dx: 0, dy: 10)])
 }
+
+// MARK: Option+W workspace layer
+
+private func tapKey(
+  _ machine: inout KeyStateMachine, _ key: ChordKey, _ modifiers: KeyModifiers, at time: Double
+) -> [KeyIntent] {
+  let down = machine.process(
+    .down(key, repeat: false, modifiers: modifiers), at: time, rect: testRect, edges: testEdges)
+  let up = machine.process(.up(key, modifiers: modifiers), at: time + 0.01, rect: testRect, edges: testEdges)
+  return down + up
+}
+
+private func holdWorkspaceLayer(_ machine: inout KeyStateMachine, at time: Double = 0) {
+  #expect(
+    machine.process(.down(.w, repeat: false, modifiers: mod), at: time, rect: testRect, edges: testEdges)
+      .isEmpty)
+}
+
+@Test func whileWIsHeldHjklStepTheGridAndShiftCarriesTheWindowAlong() {
+  var machine = KeyStateMachine()
+  holdWorkspaceLayer(&machine)
+  // h/l are columns, k/j are rows: j is the next row (down), k the previous (up).
+  for (key, step) in [
+    (ChordKey.h, GridStep.left), (.l, .right), (.j, .down), (.k, .up),
+  ] {
+    #expect(tapKey(&machine, key, mod, at: 0.1) == [.stepWorkspace(step)])
+    #expect(
+      tapKey(&machine, key, KeyModifiers(shift: true, mod: true), at: 0.2) == [.carryStepWorkspace(step)])
+  }
+  // Nothing in the layer is a Look or a carry step, and nothing waits to flush later.
+  #expect(machine.advance(to: 5, rect: testRect, edges: testEdges).isEmpty)
+}
+
+@Test func releasingWEndsTheLayerAndHjklLookAgain() {
+  var machine = KeyStateMachine()
+  holdWorkspaceLayer(&machine)
+  #expect(tapKey(&machine, .l, mod, at: 0.1) == [.stepWorkspace(.right)])
+  #expect(machine.process(.up(.w, modifiers: mod), at: 0.2, rect: testRect, edges: testEdges).isEmpty)
+
+  _ = machine.process(.down(.l, repeat: false, modifiers: mod), at: 0.3, rect: testRect, edges: testEdges)
+  #expect(machine.process(.up(.l, modifiers: mod), at: 0.32, rect: testRect, edges: testEdges) == [.look(.l)])
+}
+
+@Test func theLayerNeedsOptionWhenWIsPressed() {
+  var machine = KeyStateMachine()
+  _ = machine.process(.down(.w, repeat: false, modifiers: plain), at: 0, rect: testRect, edges: testEdges)
+  _ = machine.process(.down(.l, repeat: false, modifiers: mod), at: 0.1, rect: testRect, edges: testEdges)
+  #expect(machine.process(.up(.l, modifiers: mod), at: 0.12, rect: testRect, edges: testEdges) == [.look(.l)])
+}
+
+@Test func keyRepeatNeitherReArmsTheLayerNorRepeatsAStep() {
+  var machine = KeyStateMachine()
+  holdWorkspaceLayer(&machine)
+  // A held W auto-repeats; a held l does too. Neither does anything.
+  #expect(
+    machine.process(.down(.w, repeat: true, modifiers: mod), at: 0.5, rect: testRect, edges: testEdges)
+      .isEmpty)
+  #expect(
+    machine.process(.down(.l, repeat: false, modifiers: mod), at: 0.6, rect: testRect, edges: testEdges)
+      == [.stepWorkspace(.right)])
+  for time in [0.7, 0.8, 0.9] {
+    #expect(
+      machine.process(.down(.l, repeat: true, modifiers: mod), at: time, rect: testRect, edges: testEdges)
+        .isEmpty)
+  }
+  #expect(machine.advance(to: 3, rect: testRect, edges: testEdges).isEmpty)
+  _ = machine.process(.up(.l, modifiers: mod), at: 3.1, rect: testRect, edges: testEdges)
+  // The layer is still armed after the repeats: a second press steps again.
+  #expect(tapKey(&machine, .l, mod, at: 3.2) == [.stepWorkspace(.right)])
+}
+
+@Test func escapeCancelsTheLayerUntilWIsReleased() {
+  var machine = KeyStateMachine()
+  holdWorkspaceLayer(&machine)
+  #expect(tapKey(&machine, .j, mod, at: 0.1) == [.stepWorkspace(.down)])
+  #expect(tapKey(&machine, .escape, plain, at: 0.2).isEmpty)
+
+  // Cancelled: neither a step, nor a Look or a carry, nor a delayed flush of one.
+  #expect(tapKey(&machine, .j, mod, at: 0.3).isEmpty)
+  #expect(tapKey(&machine, .j, KeyModifiers(shift: true, mod: true), at: 0.4).isEmpty)
+  #expect(machine.advance(to: 5, rect: testRect, edges: testEdges).isEmpty)
+
+  // Releasing W and pressing it again starts a new layer.
+  _ = machine.process(.up(.w, modifiers: mod), at: 6, rect: testRect, edges: testEdges)
+  holdWorkspaceLayer(&machine, at: 6.1)
+  #expect(tapKey(&machine, .j, mod, at: 6.2) == [.stepWorkspace(.down)])
+}
+
+@Test func escapeOutsideTheLayerChangesNothingAboutIt() {
+  var machine = KeyStateMachine()
+  #expect(tapKey(&machine, .escape, plain, at: 0).isEmpty)
+  holdWorkspaceLayer(&machine, at: 0.1)
+  #expect(tapKey(&machine, .k, mod, at: 0.2) == [.stepWorkspace(.up)])
+}
+
+@Test func theLayerStepsOnlyWhileOptionIsHeld() {
+  var machine = KeyStateMachine()
+  holdWorkspaceLayer(&machine)
+  // Option released but W still down: a bare l is an ordinary press, not a workspace step.
+  _ = machine.process(.down(.l, repeat: false, modifiers: plain), at: 0.1, rect: testRect, edges: testEdges)
+  #expect(machine.process(.up(.l, modifiers: plain), at: 0.12, rect: testRect, edges: testEdges) == [.look(.l)])
+}
+
+@Test func theWorkspaceLayerWinsOverAHeldReshapeLayer() {
+  var machine = KeyStateMachine()
+  _ = machine.process(.down(.r, repeat: false, modifiers: mod), at: 0, rect: testRect, edges: testEdges)
+  holdWorkspaceLayer(&machine, at: 0.1)
+  #expect(tapKey(&machine, .l, mod, at: 0.2) == [.stepWorkspace(.right)])
+  _ = machine.process(.up(.w, modifiers: mod), at: 0.3, rect: testRect, edges: testEdges)
+  #expect(tapKey(&machine, .l, mod, at: 0.4) == [.reshape(aspectDelta: 0.05, areaDelta: 0)])
+}

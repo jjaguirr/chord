@@ -124,14 +124,18 @@ public actor Executor {
     /// The last Look move, so the opposite key can prefer the window it came from.
     private var lastLook: (from: Int, to: Int)?
     /// What Chord last saw showing: for Option+Tab and the row Option+N acts in.
-    private var navigation = WorkspaceNavigation()
+    private var navigation: WorkspaceNavigation
 
     /// Every applied, undone, or failed change, in order.
     public private(set) var log: [String] = []
 
-    public init(backend: any WorkspaceBackend, logSink: (@Sendable (String) -> Void)? = nil) {
+    public init(
+        backend: any WorkspaceBackend, workspaces: WorkspaceLayout = .defaults,
+        logSink: (@Sendable (String) -> Void)? = nil
+    ) {
         self.backend = backend
         self.logSink = logSink
+        self.navigation = WorkspaceNavigation(layout: workspaces)
     }
 
 
@@ -590,6 +594,41 @@ public actor Executor {
     @discardableResult
     public func carryToBench() async throws -> [Change] {
         try await carry(to: .bench, replacing: try await observeShowing())
+    }
+
+    /// Option+W then h/j/k/l: shows the cell one step from the one showing now (the one last
+    /// shown, when the bench or a workspace Chord did not create is showing). h/l are the
+    /// previous/next column, k/j the previous/next row. A step off the edge of a grid that
+    /// does not wrap changes nothing and says so. Moves no window and resizes none. Undo shows
+    /// what was showing before.
+    @discardableResult
+    public func stepWorkspace(_ step: GridStep) async throws -> [Change] {
+        let current = try await observeShowing()
+        guard let target = stepTarget(step) else { return [] }
+        return try await show(.cell(target), replacing: current)
+    }
+
+    /// Option+W then Shift+h/j/k/l: carries the focused window to the cell one step away and
+    /// shows it there. One undoable change, like `carryToColumn`, including the vault caveat.
+    @discardableResult
+    public func carryStepWorkspace(_ step: GridStep) async throws -> [Change] {
+        let current = try await observeShowing()
+        guard let target = stepTarget(step) else { return [] }
+        return try await carry(to: .cell(target), replacing: current)
+    }
+
+    /// The cell one step from the remembered one, logged; nil (logged) when the step leaves a
+    /// grid that does not wrap.
+    private func stepTarget(_ step: GridStep) -> GridCell? {
+        let origin = navigation.grid.current
+        let layout = navigation.layout
+        guard let target = navigation.grid.neighbour(step) else {
+            appendLog(
+                "workspace step \(step) from \(layout.label(origin)): edge of the grid; nothing changed")
+            return nil
+        }
+        appendLog("workspace step \(step): \(layout.label(origin)) -> \(layout.label(target))")
+        return target
     }
 
     /// Reads what is showing from the substrate, which is the truth (the user may have

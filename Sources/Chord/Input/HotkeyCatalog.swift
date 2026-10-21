@@ -8,8 +8,9 @@ struct HotkeyCatalog: Equatable, Sendable {
     private let byIdentity: [HotkeyBinding.Identity: HotkeyBinding]
     private let columnByKey: [InputKey: Int]
 
-    /// Option+0 (tap/hold), Option+R (reshape hold), Option+hjkl and Option+Shift+hjkl,
-    /// Option+1-9 and Option+Shift+1-9, Option+bench key and Option+Shift+bench key, Option+Tab. First writer wins
+    /// Option+0 (tap/hold), Option+R (reshape hold), Option+W (workspace layer hold),
+    /// Option+hjkl and Option+Shift+hjkl, Option+1-9 and Option+Shift+1-9, Option+bench key
+    /// and Option+Shift+bench key, Option+Tab. First writer wins
     /// when a config binding collides with another entry.
     init(keys: KeyBindings) {
         var list: [HotkeyBinding] = []
@@ -20,10 +21,11 @@ struct HotkeyCatalog: Equatable, Sendable {
             list.append(binding)
         }
 
-        // Option+0 (unfold), Option+R (reshape) and Option+Tab (cycle) are fixed
-        // constants, not config bindings.
+        // Option+0 (unfold), Option+R (reshape), Option+W (workspace layer) and Option+Tab
+        // (cycle) are fixed constants, not config bindings.
         add(.digit0, shift: false, .unfold)
         add(.keyR, shift: false, .reshape)
+        add(.keyW, shift: false, .workspaceLayer)
         let directions: [(PhysicalKey, ChordKey)] = [
             (keys.left, .h), (keys.down, .j), (keys.up, .k), (keys.right, .l),
         ]
