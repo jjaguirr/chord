@@ -23,7 +23,7 @@ struct InputGeometry: Equatable {
 /// Takes events from the Carbon and event-tap sources, decides which path owns each
 /// hotkey, feeds the `KeyStateMachine`, and logs every event with the path that caught it.
 /// It makes no window call: intents go to `intentHandler` (`WindowMotion`, then the
-/// Executor); place keys are logged only.
+/// Executor). Place, bench and Tab keys become workspace intents directly, one per press.
 ///
 /// Ownership: a hotkey Carbon registered is owned by Carbon; one it refused is owned by
 /// the tap. The tap also watches Carbon-owned keys without consuming them. If the tap
@@ -360,11 +360,31 @@ final class InputCapture: HotkeySourceDelegate {
                 ? .down(chordKey, repeat: false, modifiers: modifiers) : .up(chordKey, modifiers: modifiers)
             let screen = geometry()
             intents = machine.process(input, at: time, rect: screen.rect, edges: screen.edges)
+        } else if phase == .down, let intent = workspaceIntent(for: binding) {
+            // Workspace keys have no hold or chord: one press, one intent. Auto-repeats never
+            // reach `deliver`, so a held key does not keep switching.
+            intents = [intent]
         }
         counters.intents += intents.count
         log("input: \(phase == .down ? "down" : "up") \(binding.label) path=\(path.rawValue) "
             + "role=\(binding.role.name) intent=\(Self.describe(intents))\(note.map { " (\($0))" } ?? "")")
         if !intents.isEmpty { intentHandler?(intents) }
+    }
+
+    /// The intent of a place, bench or Tab key press: Option+N shows column N, with Shift it
+    /// carries the focused window there; the bench key and Option+Tab likewise.
+    private func workspaceIntent(for binding: HotkeyBinding) -> KeyIntent? {
+        switch binding.role {
+        case .place:
+            guard let column = catalog.column(for: binding.key) else { return nil }
+            return binding.shift ? .carryToColumn(column) : .showColumn(column)
+        case .bench:
+            return binding.shift ? .carryToBench : .showBench
+        case .cycle:
+            return .showPrevious
+        case .direction, .reshape, .unfold:
+            return nil
+        }
     }
 
     private func updateTickRequest() {
@@ -392,6 +412,11 @@ final class InputCapture: HotkeySourceDelegate {
             "carryAcross(x: \(direction.x), y: \(direction.y), dx: \(dx), dy: \(dy))"
         case .reshape(let aspect, let area): "reshape(aspect: \(aspect), area: \(area))"
         case .unfold: "unfold"
+        case .showColumn(let column): "showColumn(\(column))"
+        case .carryToColumn(let column): "carryToColumn(\(column))"
+        case .showBench: "showBench"
+        case .carryToBench: "carryToBench"
+        case .showPrevious: "showPrevious"
         case .spread: "spread"
         case .abortCharge: "abortCharge"
         }

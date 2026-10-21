@@ -141,6 +141,34 @@ struct AeroSpaceSocketTests {
         #expect(server.connections == 1)
     }
 
+    @Test func aCarryRunsThroughTheExecutorAndTheSplitBackendOverTheRealTransport() async throws {
+        let server = try LocalAeroSpaceServer(answer: { args in
+            switch args.first {
+            case "list-windows" where args.contains("--all"): return (0, "10\tr1-1\tfloating\tTerminal", "")
+            case "list-windows": return (0, "10", "")
+            case "list-workspaces": return (0, "r1-1", "")
+            default: return (0, "", "")
+            }
+        })
+        defer { server.stop() }
+        let workspaces = AeroSpaceBackend(
+            transport: AeroSpaceSocket(path: server.path, timeout: 2), pinnedTag: pin, monitors: { [] }, frames: { _ in [:] })
+        let frames = FakeWorkspaceBackend(monitors: [], windows: [], focusedWindow: nil)
+        let executor = Executor(backend: SplitBackend(frames: frames, workspaces: workspaces))
+
+        let applied = try await executor.carryToColumn(5)
+
+        let cell = GridCell(row: 1, column: 5)!
+        #expect(applied == [
+            .move(windowID: 10, from: .cell(GridCell.first), to: .cell(cell)),
+            .show(from: .cell(GridCell.first), to: .cell(cell)),
+        ])
+        let sent = server.requests.compactMap { $0["args"] as? [String] }
+        let changes = sent.filter { $0.first == "move-node-to-workspace" || $0.first == "workspace" }
+        #expect(changes == [["move-node-to-workspace", "--window-id", "10", "r1-5"], ["workspace", "r1-5"]])
+        #expect(!sent.contains { $0.first == "enable" || $0.first == "disable" })
+    }
+
     // MARK: Doctor
 
     private func health(_ path: String, timeout: TimeInterval = 1) -> AeroSpaceHealth {

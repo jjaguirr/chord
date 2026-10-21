@@ -8,6 +8,11 @@ public enum Change: Equatable, Sendable {
     case focus(from: Int?, to: Int)
     case reshape(windowID: Int, aspectDelta: Double, areaDelta: Double, from: ScreenRect, to: ScreenRect)
     case noop(windowID: Int)
+    /// A workspace switch. `from` is nil when what was showing is a workspace Chord did
+    /// not create: it cannot be named, so the switch has no inverse beyond a logged no-op.
+    case show(from: GridSlot?, to: GridSlot)
+    /// A window moved between slots (a cell or the bench), in any row.
+    case move(windowID: Int, from: GridSlot, to: GridSlot)
 
     public var inverse: Change {
         switch self {
@@ -17,6 +22,8 @@ public enum Change: Equatable, Sendable {
         case .reshape(let id, let aspect, let area, let from, let to):
             return .reshape(windowID: id, aspectDelta: 0 - aspect, areaDelta: 0 - area, from: to, to: from)
         case .noop: return self
+        case .show(let from, let to): return from.map { .show(from: to, to: $0) } ?? .noop(windowID: 0)
+        case .move(let id, let from, let to): return .move(windowID: id, from: to, to: from)
         }
     }
 
@@ -31,6 +38,8 @@ public enum Change: Equatable, Sendable {
                 windowID: id, aspectDelta: aspect, areaDelta: area, from: from.actionRect, to: to.actionRect
             ).logLine
         case .noop: return Action.noop(windowID: 0).logLine
+        case .show(let from, let to): return WorkspaceGrid.logLine(showing: to, from: from)
+        case .move(let id, let from, let to): return WorkspaceGrid.logLine(moving: id, from: from, to: to)
         }
     }
 }
@@ -114,6 +123,8 @@ public actor Executor {
     private var focusedPlace: Place?
     /// The last Look move, so the opposite key can prefer the window it came from.
     private var lastLook: (from: Int, to: Int)?
+    /// What Chord last saw showing: for Option+Tab and the row Option+N acts in.
+    private var navigation = WorkspaceNavigation()
 
     /// Every applied, undone, or failed change, in order.
     public private(set) var log: [String] = []
@@ -523,6 +534,99 @@ public actor Executor {
         return next
     }
 
+    // MARK: Workspaces
+
+    /// Option+N: shows column `column` of the row showing now. Refuses a column outside
+    /// the grid and changes nothing. Showing what is already showing sends nothing.
+    /// Moves no window and resizes none. Undo shows what was showing before.
+    @discardableResult
+    public func showColumn(_ column: Int) async throws -> [Change] {
+        let current = try await observeShowing()
+        guard let cell = navigation.cell(column: column) else {
+            appendLog("show column \(column): no such workspace; nothing changed")
+            return []
+        }
+        return try await show(.cell(cell), replacing: current)
+    }
+
+    /// The bench key: shows the bench, a view of the undecided pile. The row Option+N acts
+    /// in stays the one left, so the next column key lands back in it.
+    @discardableResult
+    public func showBench() async throws -> [Change] {
+        try await show(.bench, replacing: try await observeShowing())
+    }
+
+    /// Option+Tab: shows the slot that was showing before, a cell or the bench. Pressed
+    /// again it returns. Nothing happens when there is no earlier slot.
+    @discardableResult
+    public func showPrevious() async throws -> [Change] {
+        let current = try await observeShowing()
+        guard let previous = navigation.previous else {
+            appendLog("show previous: no earlier workspace; nothing changed")
+            return []
+        }
+        return try await show(previous, replacing: current)
+    }
+
+    /// Option+Shift+N: carries the focused window to column `column` of the row showing
+    /// now and shows it there. One undoable change: undo shows the earlier slot and puts
+    /// the window back where it was (its remembered home).
+    ///
+    /// A window carried into the vault column is not reported by any read afterwards,
+    /// so Chord cannot move it back: undo reports it skipped. Leaving the vault is the
+    /// user's alone.
+    @discardableResult
+    public func carryToColumn(_ column: Int) async throws -> [Change] {
+        let current = try await observeShowing()
+        guard let cell = navigation.cell(column: column) else {
+            appendLog("carry to column \(column): no such workspace; nothing changed")
+            return []
+        }
+        return try await carry(to: .cell(cell), replacing: current)
+    }
+
+    /// Shift+bench key: carries the focused window to the bench and shows the bench. The
+    /// window's cell is its remembered home: undo returns it there.
+    @discardableResult
+    public func carryToBench() async throws -> [Change] {
+        try await carry(to: .bench, replacing: try await observeShowing())
+    }
+
+    /// Reads what is showing from the substrate, which is the truth (the user may have
+    /// switched without Chord), and updates what Chord remembers.
+    private func observeShowing() async throws -> GridSlot? {
+        let slot = try await backend.showing()
+        navigation.observe(slot)
+        return slot
+    }
+
+    private func show(_ target: GridSlot, replacing current: GridSlot?) async throws -> [Change] {
+        guard current != target else {
+            appendLog("show workspace \(target.name): already showing; nothing changed")
+            return []
+        }
+        let applied = try await run([.show(from: current, to: target)])
+        undoStack.append(applied)
+        return applied
+    }
+
+    private func carry(to target: GridSlot, replacing current: GridSlot?) async throws -> [Change] {
+        guard let id = try await backend.focusedWindow() else { throw ExecutorError.noFocusedWindow }
+        guard current != target else {
+            appendLog("carry window \(id.rawValue): already in \(target.name); nothing changed")
+            return []
+        }
+        // The focused window sits in what is showing. The move's `from` is a placeholder:
+        // the backend reports the slot the window really left, and that is what is logged
+        // and undone.
+        let applied = try await run([
+            .move(windowID: id.rawValue, from: current ?? .bench, to: target),
+            .show(from: current, to: target),
+        ])
+        undoStack.append(applied)
+        return applied
+    }
+
     // MARK: Applying changes
 
     /// Applies changes in order through the backend, returning what the backend
@@ -601,11 +705,30 @@ public actor Executor {
             return .focus(from: from?.rawValue, to: to)
         case .noop(let id):
             return .noop(windowID: id)
+        case .show(_, let to):
+            let from = try await backend.show(to)
+            return .show(from: from, to: to)
+        case .move(let id, _, let to):
+            let from = try await backend.moveWindow(WindowID(id), to: to)
+            return .move(windowID: id, from: from, to: to)
         }
     }
 
     /// After an `.unknown` error: did the backend actually reach the change's target?
     private func landed(_ change: Change) async -> Bool {
+        // Workspace changes are read back from the workspace side, whose window ids are
+        // not the snapshot's (see `SplitBackend`).
+        switch change {
+        case .show(_, let to):
+            return (try? await backend.showing()) == to
+        case .move(let id, _, .cell(let cell)):
+            return (try? await backend.listWindows(in: cell))?.contains(WindowID(id)) ?? false
+        case .move:
+            // No read lists the bench, so a lost reply cannot be resolved: report it.
+            return false
+        default:
+            break
+        }
         guard let snapshot = try? await backend.snapshot() else { return false }
         switch change {
         case .place(let id, _, let to):
@@ -618,6 +741,8 @@ public actor Executor {
             return snapshot.focusedWindow?.rawValue == to
         case .noop:
             return true
+        case .show, .move:
+            return false  // handled above
         }
     }
 
@@ -639,7 +764,9 @@ public actor Executor {
             focusedID = to
         case .place(let id, _, let to) where id == focusedID:
             focusedPlace = to
-        case .place, .frame, .reshape, .noop:
+        case .show(_, let to):
+            navigation.observe(to)
+        case .place, .frame, .reshape, .noop, .move:
             break
         }
     }

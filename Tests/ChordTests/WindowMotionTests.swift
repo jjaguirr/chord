@@ -248,6 +248,37 @@ struct WindowMotionTests {
         #expect(rig.log.has("abort: Option+0 charge aborted"))
         #expect(try await rig.bounds() == start)
     }
+
+    @Test func workspaceIntentsGoThroughTheExecutorInOrderAndMoveNoFrame() async throws {
+        let rig = makeRig()
+        let fourth = GridCell(row: 1, column: 4)!
+        await rig.motion.handle(.intents([.carryToColumn(4), .showBench, .showPrevious]))
+
+        #expect(try await rig.backend.showing() == .cell(fourth))
+        #expect(await rig.backend.slot(of: WindowID(1)) == .cell(fourth))
+        #expect(rig.log.has("move window 1: bench -> r1-4"))
+        #expect(rig.log.has("show workspace bench (was r1-4)"))
+        #expect(try await rig.bounds() == start)
+    }
+
+    @Test func aWorkspaceKeyWithoutAeroSpaceSaysSoAndChangesNothing() async throws {
+        let rig = makeRig()
+        await rig.backend.queue([.disconnected])
+        await rig.motion.handle(.intents([.showColumn(3)]))
+
+        #expect(rig.log.has("show column 3: AeroSpace is not reachable"))
+        try await rig.backend.reconnect()
+        #expect(try await rig.backend.showing() == .cell(.first))
+    }
+
+    @Test func aWorkspaceKeyClosesAnOpenUnfoldRunFirst() async throws {
+        let rig = makeRig()
+        await rig.press(at: 0)
+        await rig.tick(at: 0.5)
+        await rig.motion.handle(.intents([.showColumn(2)]))
+
+        #expect(rig.log.has("unfold: finished (workspace)"))
+    }
 }
 
 @Suite("Screen geometry")

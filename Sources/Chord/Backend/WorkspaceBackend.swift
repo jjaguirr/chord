@@ -124,11 +124,20 @@ public protocol WorkspaceBackend: Sendable {
     @discardableResult
     func moveWindow(_ id: WindowID, to place: Place) async throws -> Place
 
-    /// Shows `cell` and returns the cell that was showing, or nil when what was showing
-    /// is not a grid cell (a workspace Chord did not create). Showing the returned cell
-    /// is the inverse. Changes only what is visible; no window moves or resizes.
+    /// Shows `slot` (a cell or the bench) and returns the slot that was showing, or nil
+    /// when what was showing is not one Chord can name (a workspace Chord did not create).
+    /// Showing the returned slot is the inverse. Changes only what is visible; no window
+    /// moves or resizes. Showing what is already showing sends nothing.
     @discardableResult
-    func show(_ cell: GridCell) async throws -> GridCell?
+    func show(_ slot: GridSlot) async throws -> GridSlot?
+
+    /// What is showing now: a cell, the bench, or nil for a workspace Chord did not create.
+    func showing() async throws -> GridSlot?
+
+    /// The focused window wherever it sits (a cell of any row, or the bench), or nil when
+    /// no window has focus. A window in the vault column is never reported, so it reads as
+    /// none, like any other window the backend does not report.
+    func focusedWindow() async throws -> WindowID?
 
     /// Moves a window into `slot`, in any row or on the bench, and returns the slot it
     /// left. Moving the window back to the returned slot is the inverse, in any row and
@@ -169,5 +178,13 @@ extension WorkspaceBackend {
     @discardableResult
     public func moveWindow(_ id: WindowID, to cell: GridCell) async throws -> GridSlot {
         try await moveWindow(id, to: GridSlot.cell(cell))
+    }
+
+    /// Shows `cell` and returns the cell that was showing, or nil when that was not a
+    /// cell (the bench, or a workspace Chord did not create); see `show(_:)` for slots.
+    @discardableResult
+    public func show(_ cell: GridCell) async throws -> GridCell? {
+        guard case .cell(let previous)? = try await show(GridSlot.cell(cell)) else { return nil }
+        return previous
     }
 }

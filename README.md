@@ -12,8 +12,10 @@ windows live and **how you move between them** — and leaves **size** to you.
 > window in that direction (across monitors at a monitor edge), Option+0 taps run Unfold,
 > Option+R then h/j/k/l reshapes, and Option+Shift+h/j/k/l carries the focused window,
 > through the Accessibility API directly. Each move is logged and undoable in the
-> Executor (no undo key yet). Not yet verified on live windows. Spread and places are
-> not wired: a place key only logs.
+> Executor (no undo key yet). Option+1-9 shows a workspace column and Option+Shift+1-9
+> carries the focused window there, Option+backtick shows the bench and Option+Tab goes
+> back, through AeroSpace (a pinned server must be running; Chord never starts it). Not
+> yet verified on live windows. Spread is not wired.
 
 ## The bet
 

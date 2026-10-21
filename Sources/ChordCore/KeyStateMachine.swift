@@ -26,6 +26,16 @@ public enum KeyIntent: Equatable, Sendable {
   case reshape(aspectDelta: Double, areaDelta: Double)
   case unfold
   case spread
+  /// Option+N: show column N (1-based) of the row showing now.
+  case showColumn(Int)
+  /// Option+Shift+N: carry the focused window to column N of that row and show it.
+  case carryToColumn(Int)
+  /// The bench key: show the bench, a view of the undecided pile.
+  case showBench
+  /// Shift+bench key: carry the focused window to the bench and show it.
+  case carryToBench
+  /// Option+Tab: show what was showing before.
+  case showPrevious
   case abortCharge
 }
 
