@@ -609,22 +609,28 @@ public actor Executor {
     }
 
     /// Option+W then Shift+h/j/k/l: carries the focused window to the cell one step away and
-    /// shows it there. One undoable change, like `carryToColumn`, including the vault caveat.
+    /// shows it there. One undoable change, like `carryToColumn`. A step whose target is the
+    /// vault column is refused: nothing moves, nothing is shown, nothing can be undone.
     @discardableResult
     public func carryStepWorkspace(_ step: GridStep) async throws -> [Change] {
         let current = try await observeShowing()
-        guard let target = stepTarget(step) else { return [] }
+        guard let target = stepTarget(step, carrying: true) else { return [] }
         return try await carry(to: .cell(target), replacing: current)
     }
 
     /// The cell one step from the remembered one, logged; nil (logged) when the step leaves a
-    /// grid that does not wrap.
-    private func stepTarget(_ step: GridStep) -> GridCell? {
+    /// grid that does not wrap, or when a carry would enter the vault column.
+    private func stepTarget(_ step: GridStep, carrying: Bool = false) -> GridCell? {
         let origin = navigation.grid.current
         let layout = navigation.layout
         guard let target = navigation.grid.neighbour(step) else {
             appendLog(
                 "workspace step \(step) from \(layout.label(origin)): edge of the grid; nothing changed")
+            return nil
+        }
+        if carrying && target.column == GridCell.columnCount {
+            appendLog(
+                "workspace carry step \(step) from \(layout.label(origin)): \(layout.label(target)) is the vault column; nothing changed")
             return nil
         }
         appendLog("workspace step \(step): \(layout.label(origin)) -> \(layout.label(target))")

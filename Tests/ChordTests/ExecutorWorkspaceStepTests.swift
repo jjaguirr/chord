@@ -274,6 +274,46 @@ struct ExecutorWorkspaceStepTests {
         #expect(try await backend.showing() == .cell(cell(1, 1)))
     }
 
+    @Test func carryingRightOntoTheVaultColumnIsRefused() async throws {
+        let backend = makeBackend()
+        await backend.switchOutsideChord(to: .cell(cell(1, GridCell.columnCount - 1)))
+        let (executor, log) = makeExecutor(backend)
+
+        #expect(try await executor.carryStepWorkspace(.right) == [])
+
+        #expect(await backend.slot(of: WindowID(1)) == .cell(cell(1, 1)))
+        #expect(try await backend.showing() == .cell(cell(1, GridCell.columnCount - 1)))
+        #expect(log.all == [
+            "workspace carry step right from r1-8: r1-9 is the vault column; nothing changed"
+        ])
+        await #expect(throws: ExecutorError.nothingToUndo) { try await executor.undo() }
+    }
+
+    @Test func carryingLeftWrappingOntoTheVaultColumnIsRefused() async throws {
+        let backend = makeBackend()
+        let (executor, _) = makeExecutor(backend, layout: WorkspaceLayout(rows: 3, wrap: true))
+
+        #expect(try await executor.carryStepWorkspace(.left) == [])
+
+        #expect(await backend.slot(of: WindowID(1)) == .cell(cell(1, 1)))
+        #expect(try await backend.showing() == .cell(cell(1, 1)))
+        await #expect(throws: ExecutorError.nothingToUndo) { try await executor.undo() }
+    }
+
+    @Test func carryingDownOrUpWithinTheVaultColumnIsRefused() async throws {
+        for step in [GridStep.down, .up] {
+            let backend = makeBackend()
+            await backend.switchOutsideChord(to: .cell(cell(2, GridCell.columnCount)))
+            let (executor, _) = makeExecutor(backend)
+
+            #expect(try await executor.carryStepWorkspace(step) == [])
+
+            #expect(try await backend.showing() == .cell(cell(2, GridCell.columnCount)))
+            #expect(await backend.slot(of: WindowID(1)) == .cell(cell(1, 1)))
+            await #expect(throws: ExecutorError.nothingToUndo) { try await executor.undo() }
+        }
+    }
+
     @Test func steppingIsNotUndoneByAnEarlierCarry() async throws {
         let backend = makeBackend()
         let (executor, _) = makeExecutor(backend)
