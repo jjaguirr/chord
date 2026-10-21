@@ -310,9 +310,13 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let clock = SystemInputClock()
         let focused = FocusedGeometry(clock: clock)
         let logLine: @Sendable (String) -> Void = { ActionLog.live.write($0) }
-        // The Accessibility backend and the Executor are the only path from a key to a
-        // window. The backend never prompts: without trust every call fails and is logged.
-        let executor = Executor(backend: AXWindowBackend(), logSink: logLine)
+        // The Accessibility backend (frames, focus) and the AeroSpace workspace adapter sit
+        // behind one Executor: the only path from a key to a window. Neither prompts: without
+        // trust, or without a reachable server, every call fails and is logged.
+        let backend = SplitBackend(
+            frames: AXWindowBackend(),
+            workspaces: AeroSpaceBackend.live(pinnedTag: config.backend.aerospaceTag))
+        let executor = Executor(backend: backend, logSink: logLine)
         let motion = WindowMotion(
             executor: executor, clock: clock,
             stepWindow: Double(config.timing.unfoldStepWindowMs) / 1000, log: logLine)

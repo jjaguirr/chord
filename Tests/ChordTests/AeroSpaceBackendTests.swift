@@ -132,6 +132,41 @@ struct AeroSpaceBackendTests {
         #expect(await server.focusedWorkspace == "r1-2")
     }
 
+    @Test func showingTheBenchSendsTheBenchWorkspaceAndIsSentOnlyOnce() async throws {
+        let server = makeServer()
+        let backend = makeBackend(server)
+
+        #expect(try await backend.show(GridSlot.bench) == .cell(cell(1, 1)))
+        #expect(try await backend.show(GridSlot.bench) == .bench)
+
+        #expect(await server.changes == [.showWorkspace("bench")])
+    }
+
+    @Test func showingReadsTheFocusedWorkspaceAndNamesOnlyWhatChordMade() async throws {
+        let server = FakeAeroSpaceServer(windows: [], focusedWorkspace: "r2-4")
+        let backend = makeBackend(server)
+        #expect(try await backend.showing() == .cell(cell(2, 4)))
+
+        await server.setFocusedWorkspace("bench")
+        #expect(try await backend.showing() == .bench)
+
+        await server.setFocusedWorkspace("1")
+        #expect(try await backend.showing() == nil)
+        #expect(await server.changes.isEmpty)
+    }
+
+    @Test func theFocusedWindowIsNoneWithoutFocusOnAForeignWorkspaceOrAnUnreadableLine() async throws {
+        let server = makeServer()
+        let backend = makeBackend(server)
+        #expect(try await backend.focusedWindow() == WindowID(11))
+
+        await server.overrideWindowLines(["10\tr1-1\tfloating\tTerminal", "11\t1\tfloating\tSafari"])
+        #expect(try await backend.focusedWindow() == nil)
+
+        let none = FakeAeroSpaceServer(windows: [(10, "r1-1", "Terminal")], focusedWorkspace: "r1-1")
+        #expect(try await makeBackend(none).focusedWindow() == nil)
+    }
+
     @Test func aMoveSendsOneCommandAfterReadingTheWindow() async throws {
         let server = makeServer()
         let backend = makeBackend(server)

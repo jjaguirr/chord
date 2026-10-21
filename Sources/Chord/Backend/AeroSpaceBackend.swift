@@ -81,15 +81,28 @@ public actor AeroSpaceBackend: WorkspaceBackend {
     // MARK: Changes
 
     @discardableResult
-    public func show(_ cell: GridCell) async throws -> GridCell? {
+    public func show(_ slot: GridSlot) async throws -> GridSlot? {
         let name = try await readFocusedWorkspace()
-        let previous = GridCell(name: name)
+        let previous = GridSlot(name: name)
         // Already showing: send nothing, so AeroSpace's back-and-forth setting cannot
         // turn a repeat key into a switch away.
-        if name != cell.name {
-            try requireSuccess(try await send(.showWorkspace(cell.name), isRead: false))
+        if name != slot.name {
+            try requireSuccess(try await send(.showWorkspace(slot.name), isRead: false))
         }
         return previous
+    }
+
+    public func showing() async throws -> GridSlot? {
+        GridSlot(name: try await readFocusedWorkspace())
+    }
+
+    public func focusedWindow() async throws -> WindowID? {
+        guard let id = try await readFocusedWindow() else { return nil }
+        // A window on a workspace Chord did not create, or in the vault column, is unknown.
+        guard let row = try await readWindows().first(where: { $0.id == id }), row.slot.place != nil else {
+            return nil
+        }
+        return id
     }
 
     @discardableResult
@@ -230,5 +243,13 @@ public actor AeroSpaceBackend: WorkspaceBackend {
             let line = answer.stderr.split(separator: "\n").first.map(String.init) ?? "exit code \(answer.exitCode)"
             throw BackendError.unknown(reason: "AeroSpace refused the command: \(LogPolicy.clipped(line))")
         }
+    }
+}
+
+extension AeroSpaceBackend {
+    /// The backend over the user's AeroSpace socket. The shell builds it here so the
+    /// socket client stays inside `Backend/`.
+    static func live(pinnedTag: String) -> AeroSpaceBackend {
+        AeroSpaceBackend(transport: AeroSpaceSocket(), pinnedTag: pinnedTag)
     }
 }

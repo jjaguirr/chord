@@ -172,11 +172,92 @@ struct InputCaptureTests {
         #expect(h.log.has("down Option+L", "intent=reshape(aspect: 0.05, area: 0.0)"))
     }
 
-    @Test func placeKeysLogWithoutAnIntent() {
-        let h = Harness()
-        h.carbon.send("Digit3")
+    // MARK: Workspace keys
 
-        #expect(h.log.has("down Option+3", "path=carbon", "role=place", "intent=none"))
+    @Test func optionDigitShowsThatColumnAndShiftCarriesToIt() {
+        let h = Harness()
+        let received = HandlerBox()
+        h.capture.intentHandler = { received.intents.append(contentsOf: $0) }
+
+        for column in 1...9 {
+            h.carbon.send("Digit\(column)")
+            h.carbon.send("Digit\(column)", .up)
+            h.carbon.send("Digit\(column)", shift: true)
+            h.carbon.send("Digit\(column)", shift: true, .up)
+        }
+
+        #expect(received.intents == (1...9).flatMap { [KeyIntent.showColumn($0), .carryToColumn($0)] })
+        #expect(h.log.has("down Option+3", "path=carbon", "role=place", "intent=showColumn(3)"))
+        #expect(h.log.has("down Option+Shift+3", "role=place", "intent=carryToColumn(3)"))
+    }
+
+    @Test func benchKeyShowsTheBenchAndShiftCarriesToIt() {
+        let h = Harness()
+        let received = HandlerBox()
+        h.capture.intentHandler = { received.intents.append(contentsOf: $0) }
+
+        h.carbon.send("Backquote")
+        h.carbon.send("Backquote", .up)
+        h.carbon.send("Backquote", shift: true)
+
+        #expect(received.intents == [.showBench, .carryToBench])
+    }
+
+    @Test func optionTabShowsThePreviousWorkspaceAndShiftTabIsNotCaptured() {
+        let h = Harness()
+        let received = HandlerBox()
+        h.capture.intentHandler = { received.intents.append(contentsOf: $0) }
+
+        h.carbon.send("Tab")
+        let shifted = h.carbon.send("Tab", shift: true)
+
+        #expect(received.intents == [.showPrevious])
+        #expect(shifted == .passThrough)
+    }
+
+    @Test func aHeldWorkspaceKeyDoesNotRepeatAndReleaseIsSilent() {
+        let h = Harness()
+        let received = HandlerBox()
+        h.capture.intentHandler = { received.intents.append(contentsOf: $0) }
+
+        h.carbon.send("Digit5")
+        h.carbon.send("Digit5", .autorepeat)
+        h.carbon.send("Digit5", .autorepeat)
+        h.carbon.send("Digit5", .up)
+
+        #expect(received.intents == [.showColumn(5)])
+    }
+
+    @Test func theTapPathConsumesTheDigitBeforeItBecomesACharacter() {
+        let h = Harness { carbon, _ in carbon.failures["Option+3"] = -9878 }
+        let received = HandlerBox()
+        h.capture.intentHandler = { received.intents.append(contentsOf: $0) }
+
+        #expect(h.tap.send("Digit3") == .consume)
+
+        #expect(received.intents == [.showColumn(3)])
+        #expect(h.log.has("down Option+3", "path=tap", "intent=showColumn(3)"))
+    }
+
+    @Test func controlDigitIsNeverAWorkspaceKey() {
+        let h = Harness()
+        let received = HandlerBox()
+        h.capture.intentHandler = { received.intents.append(contentsOf: $0) }
+
+        #expect(h.carbon.send("Digit3", control: true) == .passThrough)
+        #expect(h.tap.send("Digit3", control: true) == .passThrough)
+
+        #expect(received.intents.isEmpty)
+    }
+
+    @Test func aReboundVaultKeyIsStillTheLastColumnAndAReboundTierKeyColumnFour() {
+        let config = Config.load(text: "[keys]\nvault = \"KeyV\"\nredacted_tier = \"KeyT\"\n").config
+        let catalog = HotkeyCatalog(keys: config.keys)
+
+        #expect(catalog.column(for: InputKey(code: "KeyV")) == GridCell.columnCount)
+        #expect(catalog.column(for: InputKey(code: "KeyT")) == Workspace.four.rawValue)
+        #expect(catalog.column(for: InputKey(code: "Digit9")) == GridCell.columnCount)
+        #expect(catalog.column(for: InputKey(code: "KeyH")) == nil)
     }
 
     // MARK: Hold timing

@@ -184,9 +184,10 @@ public struct WorkspaceGrid: Equatable, Sendable {
         GridSlot(row: current.row, place: place)
     }
 
-    /// Log line for showing `cell`.
-    public static func logLine(showing cell: GridCell, from previous: GridCell?) -> String {
-        "show workspace \(cell.name) (was \(previous?.name ?? "none"))"
+    /// Log line for showing `slot` (a cell or the bench). `previous` is nil when what was
+    /// showing is a workspace Chord did not create.
+    public static func logLine(showing slot: GridSlot, from previous: GridSlot?) -> String {
+        "show workspace \(slot.name) (was \(previous?.name ?? "none"))"
     }
 
     /// Log line for moving a window.

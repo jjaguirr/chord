@@ -6,6 +6,7 @@ import ChordCore
 struct HotkeyCatalog: Equatable, Sendable {
     let bindings: [HotkeyBinding]
     private let byIdentity: [HotkeyBinding.Identity: HotkeyBinding]
+    private let columnByKey: [InputKey: Int]
 
     /// Option+0 (tap/hold), Option+R (reshape hold), Option+hjkl and Option+Shift+hjkl,
     /// Option+1-9 and Option+Shift+1-9, Option+bench key and Option+Shift+bench key, Option+Tab. First writer wins
@@ -41,8 +42,25 @@ struct HotkeyCatalog: Equatable, Sendable {
             for key in placeKeys { add(key, shift: shift, .place) }
         }
 
+        // A digit key is its own column. The configured tier and vault keys are the columns
+        // of those places; a digit they rebind to keeps its own column.
+        var columns: [InputKey: Int] = [:]
+        for (index, key) in digits.enumerated() { columns[key] = index + 1 }
+        let named: [(PhysicalKey, Int)] = [
+            (keys.redactedTier, Workspace.four.rawValue), (keys.vault, GridCell.columnCount),
+        ]
+        for (physical, column) in named where columns[InputKey(physical)] == nil {
+            columns[InputKey(physical)] = column
+        }
+        columnByKey = columns
+
         bindings = list
         byIdentity = Dictionary(uniqueKeysWithValues: list.map { ($0.identity, $0) })
+    }
+
+    /// The grid column a place key shows (Option+N) or carries to (Option+Shift+N).
+    func column(for key: InputKey) -> Int? {
+        columnByKey[key]
     }
 
     func binding(for key: InputKey, shift: Bool) -> HotkeyBinding? {

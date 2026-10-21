@@ -249,4 +249,67 @@ struct WorkspaceCellContractTests {
         #expect(try await backend.show(vault) == cell(1, 1))
         #expect(try await backend.show(cell(1, 1)) == vault)
     }
+
+    // MARK: Slots and focus
+
+    @Test(arguments: ContractSubject.allCases)
+    func showingReportsWhatIsShowingACellOrTheBench(subject: ContractSubject) async throws {
+        let backend = try await subject.make()
+        #expect(try await backend.showing() == .cell(cell(1, 1)))
+
+        #expect(try await backend.show(GridSlot.cell(cell(2, 5))) == .cell(cell(1, 1)))
+        #expect(try await backend.showing() == .cell(cell(2, 5)))
+
+        #expect(try await backend.show(GridSlot.bench) == .cell(cell(2, 5)))
+        #expect(try await backend.showing() == .bench)
+    }
+
+    @Test(arguments: ContractSubject.allCases)
+    func showingTheBenchIsReversibleAndMovesNoWindow(subject: ContractSubject) async throws {
+        let backend = try await subject.make()
+        let cells = try await allCells(backend)
+
+        let left = try await backend.show(GridSlot.bench)
+        #expect(left == .cell(cell(1, 1)))
+        #expect(try await backend.show(try #require(left)) == .bench)
+
+        #expect(try await backend.showing() == .cell(cell(1, 1)))
+        #expect(try await allCells(backend) == cells)
+        #expect(try await places(backend)[12] == .bench)
+    }
+
+    @Test(arguments: ContractSubject.allCases)
+    func withTheBenchShowingNoRowIsShowingSoThePlaceApiReportsAndMovesNothing(subject: ContractSubject) async throws {
+        let backend = try await subject.make()
+        try await backend.show(GridSlot.bench)
+
+        #expect(try await backend.snapshot().windows.isEmpty)
+        await #expect(throws: BackendError.self) {
+            try await backend.moveWindow(WindowID(12), to: .workspace(.three))
+        }
+        // The slot-typed API still works whatever is showing.
+        #expect(try await backend.moveWindow(WindowID(12), to: cell(1, 3)) == .bench)
+        #expect(try await backend.listWindows(in: cell(1, 3)) == [WindowID(12)])
+    }
+
+    @Test(arguments: ContractSubject.allCases)
+    func theFocusedWindowIsReportedInAnyCellOrOnTheBench(subject: ContractSubject) async throws {
+        let backend = try await subject.make()
+        #expect(try await backend.focusedWindow() == WindowID(10))
+
+        try await backend.moveWindow(WindowID(10), to: cell(2, 3))
+        #expect(try await backend.focusedWindow() == WindowID(10))
+
+        try await backend.moveWindow(WindowID(10), to: GridSlot.bench)
+        #expect(try await backend.focusedWindow() == WindowID(10))
+    }
+
+    @Test(arguments: ContractSubject.allCases)
+    func aFocusedWindowInTheVaultColumnReadsAsNone(subject: ContractSubject) async throws {
+        let backend = try await subject.make()
+
+        try await backend.moveWindow(WindowID(10), to: cell(1, GridCell.columnCount))
+
+        #expect(try await backend.focusedWindow() == nil)
+    }
 }

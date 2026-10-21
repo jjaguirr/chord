@@ -143,10 +143,31 @@ final class WindowMotion {
             } catch {
                 log("look \(direction.keys): \(Self.describe(error))")
             }
+        case .showColumn(let column):
+            await workspace("show column \(column)") { try await self.executor.showColumn(column) }
+        case .carryToColumn(let column):
+            await workspace("carry to column \(column)") { try await self.executor.carryToColumn(column) }
+        case .showBench:
+            await workspace("show bench") { try await self.executor.showBench() }
+        case .carryToBench:
+            await workspace("carry to bench") { try await self.executor.carryToBench() }
+        case .showPrevious:
+            await workspace("show previous") { try await self.executor.showPrevious() }
         case .spread:
             log("spread: not wired to windows yet; nothing changed")
         case .abortCharge:
             log("abort: Option+0 charge aborted; nothing changed")
+        }
+    }
+
+    /// One workspace key. The Executor logs each change, and why nothing changed when it
+    /// refuses; only a failure is logged here.
+    private func workspace(_ label: String, _ body: () async throws -> [Change]) async {
+        await finishRun(reason: "workspace")
+        do {
+            _ = try await body()
+        } catch {
+            log("\(label): \(Self.describeWorkspace(error))")
         }
     }
 
@@ -237,6 +258,21 @@ final class WindowMotion {
             return "no focused window; nothing moved"
         case ExecutorError.noVisibleFrame:
             return "no monitor holds the window; nothing moved"
+        case BackendError.unknownWindow:
+            return "the window is gone; nothing moved"
+        default:
+            return "failed: \(error)"
+        }
+    }
+
+    /// A workspace key's failure in words. Workspace calls go to AeroSpace, not to
+    /// Accessibility, so a missing connection is about the server.
+    static func describeWorkspace(_ error: Error) -> String {
+        switch error {
+        case BackendError.notConnected:
+            return "AeroSpace is not reachable (not running, disabled, or not the pinned version); nothing changed"
+        case ExecutorError.noFocusedWindow:
+            return "no focused window; nothing moved"
         case BackendError.unknownWindow:
             return "the window is gone; nothing moved"
         default:

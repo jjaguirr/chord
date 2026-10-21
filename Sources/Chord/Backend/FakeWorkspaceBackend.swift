@@ -26,7 +26,15 @@ public actor FakeWorkspaceBackend: WorkspaceBackend {
     private var monitors: [MonitorSnapshot]
     private var windows: [WindowSnapshot]
     private var slots: [WindowID: GridSlot]
-    private var shown: GridCell = .first
+    /// What is showing: a cell, the bench, or nil for a workspace Chord did not create.
+    private var shown: GridSlot? = .cell(.first)
+
+    /// The row showing now; nil on the bench or a foreign workspace, which have no row.
+    private var shownRow: Int? {
+        if case .cell(let cell)? = shown { return cell.row }
+        return nil
+    }
+
     private var focused: WindowID?
     private var stacking: [WindowID]
     private var connected = true
@@ -62,22 +70,41 @@ public actor FakeWorkspaceBackend: WorkspaceBackend {
 
     @discardableResult
     public func moveWindow(_ id: WindowID, to place: Place) async throws -> Place {
-        try mutate(id, inShownRowOnly: true) { index in
+        try guardConnected()
+        guard let row = shownRow else {
+            throw BackendError.unknown(reason: "no row is showing: what is showing is not a grid cell")
+        }
+        return try mutate(id, inShownRowOnly: true) { index in
             let previous = windows[index].place
             // A window in the shown row always has a slot; the bench needs no row.
-            if let slot = GridSlot(row: shown.row, place: place) { slots[id] = slot }
+            if let slot = GridSlot(row: row, place: place) { slots[id] = slot }
             windows[index] = windows[index].with(place: place)
             return previous
         }
     }
 
     @discardableResult
-    public func show(_ cell: GridCell) async throws -> GridCell? {
+    public func show(_ slot: GridSlot) async throws -> GridSlot? {
         try perform {
             let previous = shown
-            shown = cell
+            shown = slot
             return previous
         }
+    }
+
+    public func showing() async throws -> GridSlot? {
+        try guardConnected()
+        try failIfReadFaulted()
+        return shown
+    }
+
+    public func focusedWindow() async throws -> WindowID? {
+        try guardConnected()
+        try failIfReadFaulted()
+        guard let focused, windows.contains(where: { $0.id == focused }), slots[focused]?.place != nil else {
+            return nil
+        }
+        return focused
     }
 
     @discardableResult
@@ -129,9 +156,10 @@ public actor FakeWorkspaceBackend: WorkspaceBackend {
     }
 
     private func isPlacedInShownRow(_ id: WindowID) -> Bool {
+        guard let row = shownRow else { return false }
         switch slots[id] {
         case .bench: return true
-        case .cell(let cell): return cell.row == shown.row && cell.place != nil
+        case .cell(let cell): return cell.row == row && cell.place != nil
         case nil: return false
         }
     }
@@ -226,5 +254,23 @@ extension FakeWorkspaceBackend {
         slots[id] = nil
         stacking.removeAll { $0 == id }
         if focused == id { focused = nil }
+    }
+}
+
+extension FakeWorkspaceBackend {
+    /// Simulates a switch made outside Chord (the mouse, another tool); `nil` is a
+    /// workspace Chord did not create. Not a Chord change, so it consumes no fault.
+    public func switchOutsideChord(to slot: GridSlot?) {
+        shown = slot
+    }
+
+    /// Simulates focus moving outside Chord. Not a Chord change, so it consumes no fault.
+    public func focusOutsideChord(_ id: WindowID?) {
+        focused = id
+    }
+
+    /// Where the window sits, including the vault column that no read reports.
+    public func slot(of id: WindowID) -> GridSlot? {
+        slots[id]
     }
 }

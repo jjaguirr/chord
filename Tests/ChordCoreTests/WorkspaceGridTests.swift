@@ -141,8 +141,9 @@ struct WorkspaceGridTests {
     }
 
     @Test func logLinesNameTheCellsAndWindow() {
-        #expect(WorkspaceGrid.logLine(showing: cell(2, 5), from: cell(1, 1)) == "show workspace r2-5 (was r1-1)")
-        #expect(WorkspaceGrid.logLine(showing: cell(2, 5), from: nil) == "show workspace r2-5 (was none)")
+        #expect(WorkspaceGrid.logLine(showing: .cell(cell(2, 5)), from: .cell(cell(1, 1))) == "show workspace r2-5 (was r1-1)")
+        #expect(WorkspaceGrid.logLine(showing: .cell(cell(2, 5)), from: nil) == "show workspace r2-5 (was none)")
+        #expect(WorkspaceGrid.logLine(showing: .bench, from: .cell(cell(1, 1))) == "show workspace bench (was r1-1)")
         #expect(
             WorkspaceGrid.logLine(moving: 7, from: .bench, to: .cell(cell(1, 3))) == "move window 7: bench -> r1-3")
     }

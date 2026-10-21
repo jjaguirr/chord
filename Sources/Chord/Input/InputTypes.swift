@@ -74,8 +74,8 @@ enum EventDecision: Equatable, Sendable {
     case passThrough
 }
 
-/// What a bound key means. Place, bench and Tab keys have no `KeyStateMachine` input yet;
-/// the Executor slice wires them.
+/// What a bound key means. Place, bench and Tab keys have no `KeyStateMachine` input: a
+/// press is one workspace intent, made by `InputCapture`.
 enum HotkeyRole: Hashable, Sendable {
     case place
     case direction(ChordKey)
