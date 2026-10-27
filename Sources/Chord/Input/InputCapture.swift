@@ -244,7 +244,8 @@ final class InputCapture: HotkeySourceDelegate {
         guard running else { return .passThrough }
         let now = clock.now()
 
-        // Escape is watched, never consumed: it only matters while Option+0 is charging.
+        // Escape is watched, never consumed: it only matters while Option+0 is charging or an
+        // Option+W layer is armed.
         if event.key == .escape { return observeEscape(event, path: path, at: now) }
 
         // A key this path consumed on press keeps being routed to it until released,
@@ -382,7 +383,7 @@ final class InputCapture: HotkeySourceDelegate {
             return binding.shift ? .carryToBench : .showBench
         case .cycle:
             return .showPrevious
-        case .direction, .reshape, .unfold:
+        case .direction, .reshape, .workspaceLayer, .unfold:
             return nil
         }
     }
@@ -417,6 +418,8 @@ final class InputCapture: HotkeySourceDelegate {
         case .showBench: "showBench"
         case .carryToBench: "carryToBench"
         case .showPrevious: "showPrevious"
+        case .stepWorkspace(let step): "stepWorkspace(\(step))"
+        case .carryStepWorkspace(let step): "carryStepWorkspace(\(step))"
         case .spread: "spread"
         case .abortCharge: "abortCharge"
         }

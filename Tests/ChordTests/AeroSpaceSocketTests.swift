@@ -118,6 +118,35 @@ struct AeroSpaceSocketTests {
         }
     }
 
+    /// Regression: tests run in parallel and every server owns an accept thread, a listener
+    /// descriptor and a socket file. A stopped server's accept thread must never accept
+    /// from, or answer for, a later server, however descriptor numbers get reused. Each
+    /// server here answers with its own name, so a crossed connection shows as a wrong answer.
+    @Test func everyServerAnswersOnlyItsOwnConnectionsWhileOthersStartAndStop() async throws {
+        try await withThrowingTaskGroup(of: String?.self) { group in
+            for worker in 0..<16 {
+                group.addTask {
+                    for round in 0..<40 {
+                        let name = "w\(worker)r\(round)"
+                        let server = try LocalAeroSpaceServer(answer: { _ in (0, name, "") })
+                        // Half the servers stop before anything connects, half after one request.
+                        if round % 2 == 0 {
+                            let socket = AeroSpaceSocket(path: server.path, timeout: 5)
+                            let answer = try await socket.send(.focusedWorkspace)
+                            await socket.reset()
+                            if answer.stdout != name { return "\(name) was answered with \(answer.stdout)" }
+                        }
+                        server.stop()
+                    }
+                    return nil
+                }
+            }
+            for try await failure in group {
+                #expect(failure == nil)
+            }
+        }
+    }
+
     // MARK: Backend over the real transport
 
     @Test func theAdapterMovesAWindowOverTheRealTransport() async throws {

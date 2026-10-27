@@ -58,7 +58,8 @@ The local log is `~/Library/Logs/Chord/chord.log`, with two rotated archives.
 The active file rotates at 1 MiB; individual messages are clipped to 4096
 UTF-8 bytes. The window-title redaction policy excludes Place 4 and
 password-manager titles. Input capture logs only Chord's own Option hotkeys
-(plus Esc while an Option+0 charge is held); other keys are never recorded.
+(plus Esc, watched only to cancel an Option+0 charge or an Option+W layer, and logged only
+when it aborts a charge); other keys are never recorded.
 
 Update checks send one unauthenticated `GET` to
 `https://api.github.com/repos/jjaguirr/chord/releases/latest`. The request

@@ -222,4 +222,68 @@ struct ConfigTests {
         #expect(PhysicalKey(code: "a") == nil)
         #expect(PhysicalKey(code: "") == nil)
     }
+
+    @Test("workspaces default to three unnamed rows that clamp at the edge")
+    func workspaceDefaults() {
+        let w = Config.defaults.workspaces
+        #expect(w.rows == 3)
+        #expect(w.rowNames.isEmpty)
+        #expect(w.wrap == false)
+    }
+
+    @Test("workspace rows, names and wrap load and round-trip")
+    func workspacesLoad() {
+        let result = load("[workspaces]\nrows = 2\nrow_names = [\"work\", \"home \\\"b\\\"\"]\nwrap = true\n")
+        #expect(result.diagnostics.isEmpty)
+        #expect(result.config.workspaces == WorkspaceLayout(rows: 2, rowNames: ["work", "home \"b\""], wrap: true))
+        #expect(load(result.config.tomlText()).config == result.config)
+    }
+
+    @Test("names alone set the row count; rows alone leave rows unnamed")
+    func workspaceNamesImplyRows() {
+        let named = load("[workspaces]\nrow_names = [\"a\", \"b\", \"c\", \"d\"]\n")
+        #expect(named.diagnostics.isEmpty)
+        #expect(named.config.workspaces.rows == 4)
+        let counted = load("[workspaces]\nrows = 5\n")
+        #expect(counted.config.workspaces == WorkspaceLayout(rows: 5))
+    }
+
+    @Test("bad workspace values are diagnostics and the file falls back to defaults")
+    func workspacesRejectBadValues() {
+        let cases: [(String, ConfigDiagnostic)] = [
+            ("rows = 0", .outOfRange(line: 2, key: "rows", min: 1, max: 9)),
+            ("rows = 10", .outOfRange(line: 2, key: "rows", min: 1, max: 9)),
+            ("rows = \"3\"", .wrongType(line: 2, key: "rows", expected: "integer")),
+            ("wrap = 1", .wrongType(line: 2, key: "wrap", expected: "boolean")),
+            ("row_names = \"work\"", .wrongType(line: 2, key: "row_names", expected: "array of strings")),
+            ("row_names = [1, 2]", .wrongType(line: 2, key: "row_names", expected: "array of strings")),
+            ("row_names = []", .invalidValue(line: 2, key: "row_names", reason: "expected 1 to 9 names, found 0")),
+            ("row_names = [\"a\", \" \"]", .invalidValue(line: 2, key: "row_names", reason: "a row name is empty")),
+            ("bogus = 1", .unknownKey(line: 2, key: "bogus")),
+        ]
+        for (line, diagnostic) in cases {
+            let result = load("[workspaces]\n\(line)\n")
+            #expect(result.diagnostics == [diagnostic], "\(line)")
+            #expect(result.config == Config.defaults)
+        }
+    }
+
+    @Test("a name count that disagrees with rows is a diagnostic on the names")
+    func workspaceNamesMustMatchRows() {
+        let result = load("[workspaces]\nrows = 3\nrow_names = [\"a\", \"b\"]\n")
+        #expect(result.diagnostics == [
+            .invalidValue(line: 3, key: "row_names", reason: "rows is 3 but 2 names are given")
+        ])
+    }
+
+    @Test("a layout keeps names only when there is one per row")
+    func layoutNormalizes() {
+        #expect(WorkspaceLayout(rows: 3, rowNames: ["a"]).rowNames.isEmpty)
+        #expect(WorkspaceLayout(rows: 0).rows == 1)
+        #expect(WorkspaceLayout(rows: 99).rows == WorkspaceLayout.maxRows)
+        let named = WorkspaceLayout(rows: 2, rowNames: ["work", "home"])
+        #expect(named.name(ofRow: 2) == "home")
+        #expect(named.name(ofRow: 3) == nil)
+        #expect(WorkspaceLayout.defaults.name(ofRow: 1) == nil)
+    }
 }

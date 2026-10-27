@@ -316,7 +316,7 @@ final class ChordShell: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let backend = SplitBackend(
             frames: AXWindowBackend(),
             workspaces: AeroSpaceBackend.live(pinnedTag: config.backend.aerospaceTag))
-        let executor = Executor(backend: backend, logSink: logLine)
+        let executor = Executor(backend: backend, workspaces: config.workspaces, logSink: logLine)
         let motion = WindowMotion(
             executor: executor, clock: clock,
             stepWindow: Double(config.timing.unfoldStepWindowMs) / 1000, log: logLine)

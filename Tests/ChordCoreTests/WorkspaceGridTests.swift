@@ -104,28 +104,47 @@ struct WorkspaceGridTests {
         #expect(WorkspaceGrid(rowCount: -4).rowCount == 1)
     }
 
-    @Test func stepsMoveOneCellAndStopAtEveryEdgeWithoutWrapping() {
+    @Test func stepsMoveOneCellAndEveryEdgeRefusesWithoutWrapping() {
         var grid = WorkspaceGrid(rowCount: 3)
-        #expect(grid.neighbour(.left) == cell(1, 1))
-        #expect(grid.neighbour(.up) == cell(1, 1))
+        #expect(grid.neighbour(.left) == nil)
+        #expect(grid.neighbour(.up) == nil)
         #expect(grid.neighbour(.right) == cell(1, 2))
         #expect(grid.neighbour(.down) == cell(2, 1))
 
         grid.show(cell(3, GridCell.columnCount))
-        #expect(grid.neighbour(.right) == cell(3, GridCell.columnCount))
-        #expect(grid.neighbour(.down) == cell(3, GridCell.columnCount))
+        #expect(grid.neighbour(.right) == nil)
+        #expect(grid.neighbour(.down) == nil)
         #expect(grid.neighbour(.left) == cell(3, GridCell.columnCount - 1))
         #expect(grid.neighbour(.up) == cell(2, GridCell.columnCount))
     }
 
-    @Test func everyStepStaysInsideTheGridFromEveryCell() {
-        for rows in 1...4 {
-            for row in 1...rows {
-                for column in 1...GridCell.columnCount {
-                    var grid = WorkspaceGrid(rowCount: rows)
-                    grid.show(cell(row, column))
-                    for step in [GridStep.left, .right, .up, .down] {
-                        #expect(grid.contains(grid.neighbour(step)))
+    @Test func aWrappingGridContinuesFromTheOppositeEdge() {
+        var grid = WorkspaceGrid(rowCount: 3, wrap: true)
+        #expect(grid.neighbour(.left) == cell(1, GridCell.columnCount))
+        #expect(grid.neighbour(.up) == cell(3, 1))
+
+        grid.show(cell(3, GridCell.columnCount))
+        #expect(grid.neighbour(.right) == cell(3, 1))
+        #expect(grid.neighbour(.down) == cell(1, GridCell.columnCount))
+    }
+
+    @Test func aWrappingGridOfOneRowStepsBackOntoItsOwnRow() {
+        let grid = WorkspaceGrid(rowCount: 1, wrap: true)
+        #expect(grid.neighbour(.up) == grid.current)
+        #expect(grid.neighbour(.down) == grid.current)
+    }
+
+    @Test func everyStepIsInsideTheGridOrRefusedFromEveryCell() {
+        for wrap in [false, true] {
+            for rows in 1...4 {
+                for row in 1...rows {
+                    for column in 1...GridCell.columnCount {
+                        var grid = WorkspaceGrid(rowCount: rows, wrap: wrap)
+                        grid.show(cell(row, column))
+                        for step in [GridStep.left, .right, .up, .down] {
+                            let target = grid.neighbour(step)
+                            #expect(target.map(grid.contains) ?? !wrap)
+                        }
                     }
                 }
             }

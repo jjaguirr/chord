@@ -67,6 +67,7 @@ public enum DiagnosticsReport {
             "keys: \(config.keys == .defaults ? "defaults" : "customized")",
             "timing: \(config.timing == .defaults ? "defaults" : "customized")",
             "carry: \(config.carry == .defaults ? "defaults" : "customized")",
+            "workspaces: \(config.workspaces == .defaults ? "defaults" : "customized")",
             "standing wishes: \(config.standingWishes.count)",
         ]
     }

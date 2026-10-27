@@ -21,6 +21,14 @@ final class LocalAeroSpaceServer: @unchecked Sendable {
 
     let path: String
     private var listener: Int32 = -1
+    /// Set by `stop`. The accept thread owns the listener descriptor and closes it itself when
+    /// it leaves its loop: closing it from another thread would not wake a blocked `accept`,
+    /// and the thread could later `accept` on that descriptor number after another server
+    /// had been given it, answering that server's connections with this server's `answer`.
+    private var stopped = false
+    /// The connection being served, so `stop` can end a read that would otherwise block.
+    private var activeClient: Int32 = -1
+    private let exited = DispatchSemaphore(value: 0)
     private let lock = NSLock()
     private var connectionCount = 0
     private var received: [[String: Any]] = []
@@ -38,18 +46,49 @@ final class LocalAeroSpaceServer: @unchecked Sendable {
         self.answer = answer
         self.path = "/tmp/chord-test-\(UUID().uuidString.prefix(8)).sock"
         try listen()
-        Thread.detachNewThread { [self] in acceptLoop() }
+        let descriptor = listener
+        Thread.detachNewThread { [self] in acceptLoop(on: descriptor) }
     }
 
     var connections: Int { lock.withLock { connectionCount } }
     var requests: [[String: Any]] { lock.withLock { received } }
 
-    /// Stops accepting. The socket file stays unless `removeFile`, which leaves the stale
-    /// file a crashed AeroSpace would.
+    /// Stops accepting and returns once the accept thread has closed the listener (it can
+    /// take up to a second when the thread is stuck in a handler). The socket file stays
+    /// unless `removeFile`, which leaves the stale file a crashed AeroSpace would.
     func stop(removeFile: Bool = true) {
-        if listener >= 0 { Darwin.close(listener) }
-        listener = -1
+        let first = lock.withLock { () -> Bool in
+            defer { stopped = true }
+            if !stopped, activeClient >= 0 { Darwin.shutdown(activeClient, SHUT_RDWR) }
+            return !stopped
+        }
+        if first {
+            wakeAcceptThread()
+            _ = exited.wait(timeout: .now() + 1)
+        }
         if removeFile { unlink(path) }
+    }
+
+    private var isStopped: Bool { lock.withLock { stopped } }
+
+    /// A throwaway connection that makes a blocked `accept` return.
+    private func wakeAcceptThread() {
+        let fd = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return }
+        defer { Darwin.close(fd) }
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        let capacity = MemoryLayout.size(ofValue: address.sun_path)
+        withUnsafeMutablePointer(to: &address.sun_path) { pointer in
+            pointer.withMemoryRebound(to: CChar.self, capacity: capacity) { destination in
+                _ = path.withCString { strncpy(destination, $0, capacity - 1) }
+            }
+        }
+        _ = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
     }
 
     deinit { stop() }
@@ -73,17 +112,26 @@ final class LocalAeroSpaceServer: @unchecked Sendable {
         guard bound == 0, Darwin.listen(listener, 4) == 0 else { throw POSIXError(.EADDRINUSE) }
     }
 
-    private func acceptLoop() {
-        while true {
-            let current = listener
-            guard current >= 0 else { return }
-            let client = accept(current, nil, nil)
+    private func acceptLoop(on descriptor: Int32) {
+        defer {
+            Darwin.close(descriptor)
+            exited.signal()
+        }
+        while !isStopped {
+            let client = accept(descriptor, nil, nil)
             if client < 0 { return }
-            let index = lock.withLock { () -> Int in
+            let index = lock.withLock { () -> Int? in
+                if stopped { return nil }
+                activeClient = client
                 connectionCount += 1
                 return connectionCount
             }
+            guard let index else {
+                Darwin.close(client)
+                return
+            }
             serve(client, behavior(index))
+            lock.withLock { activeClient = -1 }
             Darwin.close(client)
         }
     }
@@ -108,7 +156,8 @@ final class LocalAeroSpaceServer: @unchecked Sendable {
             case .dropsAfterRequest:
                 return
             case .silentAfterRequest:
-                Thread.sleep(forTimeInterval: 2)
+                // Silent for up to 2 s, or until the server is stopped.
+                for _ in 0..<100 where !isStopped { Thread.sleep(forTimeInterval: 0.02) }
                 return
             case .hugeLengthPrefix:
                 writeAll(client, AeroSpaceWire.integerBytes(UInt32.max))
