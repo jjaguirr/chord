@@ -244,7 +244,8 @@ final class InputCapture: HotkeySourceDelegate {
         guard running else { return .passThrough }
         let now = clock.now()
 
-        // Escape is watched, never consumed: it only matters while Option+0 is charging.
+        // Escape is watched, never consumed: it only matters while Option+0 is charging or an
+        // Option+W layer is armed.
         if event.key == .escape { return observeEscape(event, path: path, at: now) }
 
         // A key this path consumed on press keeps being routed to it until released,
