@@ -26,7 +26,7 @@ public struct WorkspaceNavigation: Equatable, Sendable {
         return cell
     }
 
-    /// Column `column` of the remembered row.
+    /// Column `column` of the remembered row: nil for a column outside `1...columnCount`.
     public func cell(column: Int) -> GridCell? {
         return GridCell(row: grid.current.row, column: column)
     }
@@ -41,5 +41,4 @@ public struct WorkspaceNavigation: Equatable, Sendable {
         if previous == slot { previous = nil }
         if case .cell(let cell)? = slot { grid.show(cell) }
     }
-
 }
