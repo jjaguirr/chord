@@ -122,6 +122,22 @@ struct ExecutorWorkspaceTests {
         await #expect(throws: ExecutorError.nothingToUndo) { try await executor.undo() }
     }
 
+    @Test func columnsRefuseAnOutOfGridShowingCellInsteadOfUsingTheLastRow() async throws {
+        let backend = makeBackend()
+        let log = LogBox()
+        let executor = Executor(
+            backend: backend, workspaces: WorkspaceLayout(rows: 2), logSink: { log.append($0) })
+        await backend.switchOutsideChord(to: .cell(cell(3, 1)))
+
+        #expect(try await executor.showColumn(5) == [])
+        #expect(try await executor.carryToColumn(5) == [])
+        #expect(try await backend.showing() == .cell(cell(3, 1)))
+        #expect(log.all == [
+            "show column 5: showing workspace r3-1 is outside the configured grid; nothing changed",
+            "carry to column 5: showing workspace r3-1 is outside the configured grid; nothing changed",
+        ])
+    }
+
     @Test func anEmptyCellShowsLikeAnyOther() async throws {
         let backend = makeBackend()
         let (executor, _) = makeExecutor(backend)

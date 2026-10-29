@@ -546,6 +546,10 @@ public actor Executor {
     @discardableResult
     public func showColumn(_ column: Int) async throws -> [Change] {
         let current = try await observeShowing()
+        if let cell = navigation.showingOutsideGrid {
+            appendLog("show column \(column): showing workspace \(cell.name) is outside the configured grid; nothing changed")
+            return []
+        }
         guard let cell = navigation.cell(column: column) else {
             appendLog("show column \(column): no such workspace; nothing changed")
             return []
@@ -582,6 +586,10 @@ public actor Executor {
     @discardableResult
     public func carryToColumn(_ column: Int) async throws -> [Change] {
         let current = try await observeShowing()
+        if let cell = navigation.showingOutsideGrid {
+            appendLog("carry to column \(column): showing workspace \(cell.name) is outside the configured grid; nothing changed")
+            return []
+        }
         guard let cell = navigation.cell(column: column) else {
             appendLog("carry to column \(column): no such workspace; nothing changed")
             return []
@@ -623,6 +631,10 @@ public actor Executor {
     private func stepTarget(_ step: GridStep, carrying: Bool = false) -> GridCell? {
         let origin = navigation.grid.current
         let layout = navigation.layout
+        if let cell = navigation.showingOutsideGrid {
+            appendLog("workspace step \(step) from \(cell.name): outside the configured grid; nothing changed")
+            return nil
+        }
         guard let target = navigation.grid.neighbour(step) else {
             appendLog(
                 "workspace step \(step) from \(layout.label(origin)): edge of the grid; nothing changed")

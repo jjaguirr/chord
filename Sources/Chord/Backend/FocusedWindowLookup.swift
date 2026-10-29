@@ -31,8 +31,11 @@ enum FocusedWindowLookupResult<Element> {
 /// `AXManualAccessibility` (the documented Chromium/Electron switch, no animation cost,
 /// unlike `AXEnhancedUserInterface`) and re-read the focused window a bounded number of
 /// times while the tree is built. The app is latched only once the set succeeds.
+/// Chromium may need several hundred milliseconds to build its accessibility tree after
+/// `AXManualAccessibility` is enabled. Retries are spaced and bounded to keep a missing
+/// window from blocking input indefinitely.
 final class FocusedWindowLookup<Tree: AXTree> {
-    static var retryAttempts: Int { 3 }
+    static var retryAttempts: Int { 10 }
     static var retryInterval: Double { 0.05 }
 
     private let tree: Tree

@@ -19,6 +19,20 @@ public struct WorkspaceNavigation: Equatable, Sendable {
         grid = WorkspaceGrid(rowCount: layout.rows, wrap: layout.wrap)
     }
 
+    /// A recognized cell outside the configured row count is not a usable navigation
+    /// origin. Callers must refuse rather than fall back to the last in-grid cell.
+    public var showingOutsideGrid: GridCell? {
+        guard case .cell(let cell)? = showing, !grid.contains(cell) else { return nil }
+        return cell
+    }
+
+    /// Column `column` of the remembered row, unless the actual showing cell is outside
+    /// the configured grid.
+    public func cell(column: Int) -> GridCell? {
+        guard showingOutsideGrid == nil else { return nil }
+        return GridCell(row: grid.current.row, column: column)
+    }
+
     /// Records what the substrate says is showing now. A change from a known slot makes
     /// that slot `previous`, whoever caused it; seeing the same slot again changes nothing.
     public mutating func observe(_ slot: GridSlot?) {
@@ -30,8 +44,4 @@ public struct WorkspaceNavigation: Equatable, Sendable {
         if case .cell(let cell)? = slot { grid.show(cell) }
     }
 
-    /// Column `column` of the remembered row: nil for a column outside `1...columnCount`.
-    public func cell(column: Int) -> GridCell? {
-        GridCell(row: grid.current.row, column: column)
-    }
 }
