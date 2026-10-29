@@ -63,6 +63,21 @@ struct FocusedWindowLookupTests {
         #expect(sleeps.intervals == [0.05])
     }
 
+    @Test func chromeTreeTakingLongerThanTheFormerRetryWindowStillFindsItsFocusedWindow() {
+        let tree = FakeTree()
+        tree.focusedWindowAppearsAtRead = 7
+        let sleeps = SleepLog()
+
+        guard case .found(let window, let via) = lookup(tree, sleeps: sleeps).find() else {
+            Issue.record("expected Chromium's delayed focused window")
+            return
+        }
+
+        #expect(window == 8)
+        #expect(via.contains("AXManualAccessibility"))
+        #expect(sleeps.intervals == Array(repeating: 0.05, count: 6))
+    }
+
     @Test func retriesAreBoundedAndSpacedWhenTheTreeNeverAppears() {
         let tree = FakeTree()
         let sleeps = SleepLog()
@@ -70,10 +85,10 @@ struct FocusedWindowLookupTests {
             Issue.record("expected notFound")
             return
         }
-        #expect(tree.focusedReads == 4)
-        #expect(sleeps.intervals == [0.05, 0.05, 0.05])
+        #expect(tree.focusedReads == 11)
+        #expect(sleeps.intervals == Array(repeating: 0.05, count: 10))
         #expect(reason.contains("AXManualAccessibility set ok"))
-        #expect(reason.contains("focused retry 3 noValue(-25212)"))
+        #expect(reason.contains("focused retry 10 noValue(-25212)"))
     }
 
     @Test func manualAccessibilityIsSetOncePerApp() {

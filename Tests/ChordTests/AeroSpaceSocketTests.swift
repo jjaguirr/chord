@@ -1,7 +1,79 @@
+import ApplicationServices
 import ChordCore
 import Foundation
 import Testing
 @testable import Chord
+
+private final class SocketMotionClock: InputClock {
+    var time = 0.0
+    func now() -> Double { time }
+}
+
+private final class DelayedChromiumTree: AXTree {
+    private(set) var focusedReads = 0
+    private var manualAccessibility = false
+    let application = AXUIElementCreateApplication(1)
+    let window = AXUIElementCreateApplication(getpid())
+
+    func focusedApplication() -> Result<AXUIElement, AXFailure> { .success(application) }
+
+    func element(of parent: AXUIElement, attribute: String) -> Result<AXUIElement, AXFailure> {
+        guard attribute == kAXFocusedWindowAttribute else {
+            return .failure(AXFailure(code: .noValue))
+        }
+        focusedReads += 1
+        return focusedReads >= 7 && manualAccessibility
+            ? .success(window)
+            : .failure(AXFailure(code: .noValue))
+    }
+
+    func isChromiumBased(_ app: AXUIElement) -> Bool { true }
+
+    func setBool(_ attribute: String, on app: AXUIElement) -> AXError {
+        manualAccessibility = true
+        return .success
+    }
+}
+
+private final class ChromeWindowState: @unchecked Sendable {
+    let tree = DelayedChromiumTree()
+    private let lookup: FocusedWindowLookup<DelayedChromiumTree>
+    private let lock = NSLock()
+    private var bounds: ScreenRect
+
+    init(bounds: ScreenRect) {
+        self.bounds = bounds
+        lookup = FocusedWindowLookup(
+            tree: tree,
+            appKey: { app in
+                var pid: pid_t = 0
+                AXUIElementGetPid(app, &pid)
+                return Int(pid)
+            },
+            sleep: { _ in })
+    }
+
+    func focusedWindow() -> AXUIElement? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard case .found(let window, _) = lookup.find() else { return nil }
+        return window
+    }
+
+    func read() -> ScreenRect? {
+        lock.lock()
+        defer { lock.unlock() }
+        return bounds
+    }
+
+    func write(_ frame: ScreenRect) -> AXError {
+        lock.lock()
+        defer { lock.unlock() }
+        bounds = frame
+        return .success
+    }
+}
+
 
 @Suite("AeroSpace socket and doctor (local test server)")
 struct AeroSpaceSocketTests {
@@ -196,6 +268,68 @@ struct AeroSpaceSocketTests {
         let changes = sent.filter { $0.first == "move-node-to-workspace" || $0.first == "workspace" }
         #expect(changes == [["move-node-to-workspace", "--window-id", "10", "r1-5"], ["workspace", "r1-5"]])
         #expect(!sent.contains { $0.first == "enable" || $0.first == "disable" })
+    }
+
+    @MainActor
+    @Test func optionZeroMovesAChromeWindowWhoseFocusAnswersLateThroughTheAXBackend() async throws {
+        let visible = ScreenRect(x: 0, y: 25, width: 1440, height: 875)
+        let chrome = ChromeWindowState(bounds: ScreenRect(x: 100, y: 100, width: 600, height: 400))
+        let frames = AXWindowBackend(
+            monitors: { [MonitorSnapshot(id: MonitorID(1), bounds: visible, isPrimary: true)] },
+            isTrusted: { true },
+            focusedWindow: { chrome.focusedWindow() },
+            frame: { _ in chrome.read() },
+            writeFrame: { _, frame in chrome.write(frame) })
+        let executor = Executor(
+            backend: SplitBackend(frames: frames, workspaces: FakeWorkspaceBackend(monitors: [], windows: [])))
+        let clock = SocketMotionClock()
+        let motion = WindowMotion(executor: executor, clock: clock, sleep: { _ in }, log: { _ in })
+        var machine = KeyStateMachine()
+        let rect = PickerRect(x: 100, y: 100, width: 600, height: 400)
+        let edges = KeyStateMachine.Edges(left: 0, right: 1440, top: 25, bottom: 900)
+        let option = KeyModifiers(mod: true)
+        _ = machine.process(.down(.zero, repeat: false, modifiers: option), at: 0, rect: rect, edges: edges)
+        let intents = machine.process(.up(.zero, modifiers: option), at: 0.1, rect: rect, edges: edges)
+
+        #expect(intents == [.unfold])
+        await motion.handle(.intents(intents))
+        clock.time = 0.5
+        await motion.handle(.tick)
+        #expect(chrome.tree.focusedReads >= 7)
+        let moved = chrome.read()
+        #expect(moved?.width == 333)
+        #expect(moved?.height == 471)
+    }
+
+    @MainActor
+    @Test func optionWThenLRefusesAnOutOfGridWorkspaceThroughTheLocalServer() async throws {
+        let server = try LocalAeroSpaceServer(answer: { args in
+            args.first == "list-workspaces" ? (0, "r3-1", "") : (0, "", "")
+        })
+        defer { server.stop() }
+
+        let workspaceBackend = AeroSpaceBackend(
+            transport: AeroSpaceSocket(path: server.path, timeout: 2), pinnedTag: pin,
+            monitors: { [] }, frames: { _ in [:] })
+        let frameBackend = FakeWorkspaceBackend(monitors: [], windows: [])
+        let executor = Executor(
+            backend: SplitBackend(frames: frameBackend, workspaces: workspaceBackend),
+            workspaces: WorkspaceLayout(rows: 2))
+        let motion = WindowMotion(
+            executor: executor, clock: SocketMotionClock(), sleep: { _ in }, log: { _ in })
+        var machine = KeyStateMachine()
+        let rect = PickerRect(x: 0, y: 0, width: 100, height: 100)
+        let edges = KeyStateMachine.Edges(left: 0, right: 100, top: 0, bottom: 100)
+        let option = KeyModifiers(mod: true)
+        _ = machine.process(.down(.w, repeat: false, modifiers: option), at: 0, rect: rect, edges: edges)
+        let intents = machine.process(.down(.l, repeat: false, modifiers: option), at: 0.01, rect: rect, edges: edges)
+
+        #expect(intents == [.stepWorkspace(.right)])
+        await motion.handle(.intents(intents))
+
+        #expect(try await workspaceBackend.showing() == GridSlot(name: "r3-1"))
+        #expect(await executor.log.last == "workspace step right from r3-1: outside the configured grid; nothing changed")
+        #expect(!server.requests.contains { ($0["args"] as? [String])?.first == "workspace" })
     }
 
     // MARK: Doctor

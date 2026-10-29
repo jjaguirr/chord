@@ -26,16 +26,25 @@ public final class AXWindowBackend: WorkspaceBackend, @unchecked Sendable {
     private let lock = NSLock()
     private var entries: [Entry] = []
     private var nextID = 1
-    private let writer = AXWindowWriter()
+    private let writeFrame: @Sendable (AXUIElement, ScreenRect) -> AXError
     private let monitors: @Sendable () -> [MonitorSnapshot]
     private let isTrusted: @Sendable () -> Bool
+    private let focusedElement: @Sendable () -> AXUIElement?
+    private let frameOf: @Sendable (AXUIElement) -> ScreenRect?
+    private let writer = AXWindowWriter()
 
     init(
         monitors: @escaping @Sendable () -> [MonitorSnapshot] = { ScreenGeometry.monitors() },
-        isTrusted: @escaping @Sendable () -> Bool = { AXIsProcessTrusted() }
+        isTrusted: @escaping @Sendable () -> Bool = { AXIsProcessTrusted() },
+        focusedWindow: @escaping @Sendable () -> AXUIElement? = { AXReading.focusedWindow() },
+        frame: @escaping @Sendable (AXUIElement) -> ScreenRect? = { AXReading.frame(of: $0) },
+        writeFrame: @escaping @Sendable (AXUIElement, ScreenRect) -> AXError = { AXWindowWriter().writeFrame($0, to: $1) }
     ) {
         self.monitors = monitors
         self.isTrusted = isTrusted
+        self.focusedElement = focusedWindow
+        self.frameOf = frame
+        self.writeFrame = writeFrame
         AXReading.configureTimeouts()
     }
 
@@ -83,11 +92,11 @@ public final class AXWindowBackend: WorkspaceBackend, @unchecked Sendable {
     public func applyFrame(_ id: WindowID, to frame: ScreenRect) async throws -> ScreenRect {
         guard isTrusted() else { throw BackendError.notConnected }
         let window = try element(for: id)
-        guard let previous = AXReading.frame(of: window) else {
+        guard let previous = frameOf(window) else {
             forget(id)
             throw BackendError.unknownWindow(id)
         }
-        try check(writer.writeFrame(window, to: frame), "set frame", id)
+        try check(writeFrame(window, frame), "set frame", id)
         return previous
     }
 
@@ -95,7 +104,7 @@ public final class AXWindowBackend: WorkspaceBackend, @unchecked Sendable {
     public func focusWindow(_ id: WindowID) async throws -> WindowID? {
         guard isTrusted() else { throw BackendError.notConnected }
         let window = try element(for: id)
-        let previous = AXReading.focusedWindow().map { WindowID(register([$0])[0]) }
+        let previous = focusedElement().map { WindowID(register([$0])[0]) }
         try check(writer.focus(window), "focus", id)
         return previous
     }
@@ -112,12 +121,12 @@ public final class AXWindowBackend: WorkspaceBackend, @unchecked Sendable {
     // MARK: Registry
 
     private func readSnapshot() -> BackendSnapshot {
-        let focusedID = AXReading.focusedWindow().map { WindowID(register([$0])[0]) }
+        let focusedID = focusedElement().map { WindowID(register([$0])[0]) }
         let current = remembered()
         var windows: [WindowSnapshot] = []
         var alive: Set<Int> = []
         for entry in current {
-            guard let bounds = AXReading.frame(of: entry.element) else { continue }
+            guard let bounds = frameOf(entry.element) else { continue }
             alive.insert(entry.id)
             windows.append(
                 WindowSnapshot(
@@ -132,7 +141,7 @@ public final class AXWindowBackend: WorkspaceBackend, @unchecked Sendable {
 
     private func readVisibleSnapshot() -> BackendSnapshot {
         let monitors = monitors()
-        let focused = AXReading.focusedWindow()
+        let focused = focusedElement()
         let listed = AXWindowList.visibleWindows(monitors: monitors)
         let elements = (focused.map { [$0] } ?? []) + listed
         let registered = register(elements)
@@ -140,7 +149,7 @@ public final class AXWindowBackend: WorkspaceBackend, @unchecked Sendable {
         var ids = Set<Int>()
         var windows: [WindowSnapshot] = []
         for (element, id) in zip(elements, registered) {
-            guard ids.insert(id).inserted, let bounds = AXReading.frame(of: element) else { continue }
+            guard ids.insert(id).inserted, let bounds = frameOf(element) else { continue }
             windows.append(
                 WindowSnapshot(
                     id: WindowID(id), appName: AXReading.appName(of: element),

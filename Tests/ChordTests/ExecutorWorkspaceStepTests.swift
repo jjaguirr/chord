@@ -131,6 +131,18 @@ struct ExecutorWorkspaceStepTests {
         #expect(try await backend.showing() == .cell(cell(3, GridCell.columnCount)))
     }
 
+    @Test func anObservedCellOutsideTheConfiguredGridIsNotUsedAsAStaleStepOrigin() async throws {
+        let backend = makeBackend()
+        let (executor, log) = makeExecutor(backend, layout: WorkspaceLayout(rows: 2))
+        await start(backend, at: cell(2, 1))
+        try await executor.stepWorkspace(.right)
+        await start(backend, at: cell(3, 1))
+
+        #expect(try await executor.stepWorkspace(.right) == [])
+        #expect(try await backend.showing() == .cell(cell(3, 1)))
+        #expect(log.all.last == "workspace step right from r3-1: outside the configured grid; nothing changed")
+    }
+
     @Test func theRowCountComesFromTheLayout() async throws {
         let backend = makeBackend()
         let (executor, _) = makeExecutor(backend, layout: WorkspaceLayout(rows: 2))

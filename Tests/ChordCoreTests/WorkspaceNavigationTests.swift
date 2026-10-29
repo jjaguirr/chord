@@ -107,11 +107,12 @@ struct WorkspaceNavigationTests {
         #expect(navigation.previous == cell(1, 4))
     }
 
-    @Test func aCellBeyondTheLastRowDoesNotMoveTheRememberedRow() {
+    @Test func aCellBeyondTheLastRowIsNotUsedAsANavigationOrigin() {
         var navigation = WorkspaceNavigation(layout: WorkspaceLayout(rows: 2))
         navigation.observe(cell(2, 1))
         navigation.observe(cell(5, 1))
 
-        #expect(navigation.cell(column: 3)?.name == "r2-3")
+        #expect(navigation.grid.current.name == "r2-1")
+        #expect(navigation.showingOutsideGrid?.name == "r5-1")
     }
 }
