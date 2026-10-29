@@ -12,23 +12,64 @@ private final class SocketMotionClock: InputClock {
 private final class DelayedChromiumTree: AXTree {
     private(set) var focusedReads = 0
     private var manualAccessibility = false
+    let application = AXUIElementCreateApplication(1)
+    let window = AXUIElementCreateApplication(getpid())
 
-    func focusedApplication() -> Result<Int, AXFailure> { .success(1) }
+    func focusedApplication() -> Result<AXUIElement, AXFailure> { .success(application) }
 
-    func element(of parent: Int, attribute: String) -> Result<Int, AXFailure> {
+    func element(of parent: AXUIElement, attribute: String) -> Result<AXUIElement, AXFailure> {
         guard attribute == kAXFocusedWindowAttribute else {
             return .failure(AXFailure(code: .noValue))
         }
         focusedReads += 1
         return focusedReads >= 7 && manualAccessibility
-            ? .success(8)
+            ? .success(window)
             : .failure(AXFailure(code: .noValue))
     }
 
-    func isChromiumBased(_ app: Int) -> Bool { true }
+    func isChromiumBased(_ app: AXUIElement) -> Bool { true }
 
-    func setBool(_ attribute: String, on app: Int) -> AXError {
+    func setBool(_ attribute: String, on app: AXUIElement) -> AXError {
         manualAccessibility = true
+        return .success
+    }
+}
+
+private final class ChromeWindowState: @unchecked Sendable {
+    let tree = DelayedChromiumTree()
+    private let lookup: FocusedWindowLookup<DelayedChromiumTree>
+    private let lock = NSLock()
+    private var bounds: ScreenRect
+
+    init(bounds: ScreenRect) {
+        self.bounds = bounds
+        lookup = FocusedWindowLookup(
+            tree: tree,
+            appKey: { app in
+                var pid: pid_t = 0
+                AXUIElementGetPid(app, &pid)
+                return Int(pid)
+            },
+            sleep: { _ in })
+    }
+
+    func focusedWindow() -> AXUIElement? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard case .found(let window, _) = lookup.find() else { return nil }
+        return window
+    }
+
+    func read() -> ScreenRect? {
+        lock.lock()
+        defer { lock.unlock() }
+        return bounds
+    }
+
+    func write(_ frame: ScreenRect) -> AXError {
+        lock.lock()
+        defer { lock.unlock() }
+        bounds = frame
         return .success
     }
 }
@@ -230,30 +271,17 @@ struct AeroSpaceSocketTests {
     }
 
     @MainActor
-    @Test func delayedChromeFocusDrivesOptionZeroThroughMotionAndTheSplitBackend() async throws {
-        let server = try LocalAeroSpaceServer(answer: { args in
-            args.first == "list-workspaces" ? (0, "r1-1", "") : (0, "", "")
-        })
-        defer { server.stop() }
-
-        let lookup = FocusedWindowLookup(tree: DelayedChromiumTree(), appKey: { $0 }, sleep: { _ in })
-        guard case .found(let focusedWindow, _) = lookup.find() else {
-            Issue.record("expected Chrome's delayed focused window")
-            return
-        }
+    @Test func optionZeroMovesAChromeWindowWhoseFocusAnswersLateThroughTheAXBackend() async throws {
         let visible = ScreenRect(x: 0, y: 25, width: 1440, height: 875)
-        let start = ScreenRect(x: 100, y: 100, width: 600, height: 400)
-        let frameBackend = FakeWorkspaceBackend(
-            monitors: [MonitorSnapshot(id: MonitorID(1), bounds: visible, isPrimary: true)],
-            windows: [WindowSnapshot(
-                id: WindowID(focusedWindow), appName: "Google Chrome", place: .bench,
-                isFloating: true, bounds: start)],
-            focusedWindow: WindowID(focusedWindow))
-        let workspaceBackend = AeroSpaceBackend(
-            transport: AeroSpaceSocket(path: server.path, timeout: 2), pinnedTag: pin,
-            monitors: { [] }, frames: { _ in [:] })
-        let backend = SplitBackend(frames: frameBackend, workspaces: workspaceBackend)
-        let executor = Executor(backend: backend)
+        let chrome = ChromeWindowState(bounds: ScreenRect(x: 100, y: 100, width: 600, height: 400))
+        let frames = AXWindowBackend(
+            monitors: { [MonitorSnapshot(id: MonitorID(1), bounds: visible, isPrimary: true)] },
+            isTrusted: { true },
+            focusedWindow: { chrome.focusedWindow() },
+            frame: { _ in chrome.read() },
+            writeFrame: { _, frame in chrome.write(frame) })
+        let executor = Executor(
+            backend: SplitBackend(frames: frames, workspaces: FakeWorkspaceBackend(monitors: [], windows: [])))
         let clock = SocketMotionClock()
         let motion = WindowMotion(executor: executor, clock: clock, sleep: { _ in }, log: { _ in })
         var machine = KeyStateMachine()
@@ -267,12 +295,10 @@ struct AeroSpaceSocketTests {
         await motion.handle(.intents(intents))
         clock.time = 0.5
         await motion.handle(.tick)
-
-        let moved = try await frameBackend.snapshot().windows.first?.bounds
+        #expect(chrome.tree.focusedReads >= 7)
+        let moved = chrome.read()
         #expect(moved?.width == 333)
         #expect(moved?.height == 471)
-        #expect(try await workspaceBackend.showing() == .cell(.first))
-        #expect(server.requests.contains { ($0["args"] as? [String])?.first == "list-workspaces" })
     }
 
     @MainActor
