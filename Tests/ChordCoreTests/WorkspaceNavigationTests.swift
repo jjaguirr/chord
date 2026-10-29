@@ -114,6 +114,5 @@ struct WorkspaceNavigationTests {
 
         #expect(navigation.grid.current.name == "r2-1")
         #expect(navigation.showingOutsideGrid?.name == "r5-1")
-        #expect(navigation.cell(column: 3) == nil)
     }
 }

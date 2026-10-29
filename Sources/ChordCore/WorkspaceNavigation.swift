@@ -26,10 +26,8 @@ public struct WorkspaceNavigation: Equatable, Sendable {
         return cell
     }
 
-    /// Column `column` of the remembered row, unless the actual showing cell is outside
-    /// the configured grid.
+    /// Column `column` of the remembered row.
     public func cell(column: Int) -> GridCell? {
-        guard showingOutsideGrid == nil else { return nil }
         return GridCell(row: grid.current.row, column: column)
     }
 
